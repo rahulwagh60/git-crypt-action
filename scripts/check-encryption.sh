@@ -3,6 +3,7 @@
 # Script to check if YAML files are encrypted according to .gitattributes patterns
 # Uses git-crypt to determine encryption status
 
+echo "running check encryption script"
 set -e
 
 echo "=== Checking YAML file encryption status ==="
