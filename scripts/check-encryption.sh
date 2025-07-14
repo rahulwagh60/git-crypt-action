@@ -56,36 +56,60 @@ should_be_encrypted() {
     return 1  # Should not be encrypted
 }
 
+# # Function to check if a file is actually encrypted
+# is_file_encrypted() {
+#     local file="$1"
+    
+#     # Check if git-crypt is available
+#     if ! command -v git-crypt &> /dev/null; then
+#         echo "⚠️ git-crypt not available, checking file content manually"
+        
+#         # Basic check: encrypted files typically have binary content or specific markers
+#         # git-crypt encrypted files start with specific bytes
+#         if file "$file" | grep -q "data" || head -c 10 "$file" | grep -q $'\x00GITCRYPT' 2>/dev/null; then
+#             return 0  # Likely encrypted
+#         else
+#             # Check if file looks like readable YAML
+#             if head -n 5 "$file" | grep -E "^[[:space:]]*[a-zA-Z_][a-zA-Z0-9_]*[[:space:]]*:" &>/dev/null; then
+#                 return 1  # Looks like plain text YAML
+#             fi
+#         fi
+        
+#         return 0  # Default to encrypted if uncertain
+#     fi
+    
+#     # Use git-crypt to check encryption status
+#     # git-crypt status returns 0 if file is encrypted, 1 if not
+#     if git-crypt status "$file" 2>/dev/null | grep -q "encrypted"; then
+#         return 0  # Encrypted
+#     else
+#         return 1  # Not encrypted
+#     fi
+# }
+
 # Function to check if a file is actually encrypted
 is_file_encrypted() {
     local file="$1"
-    
-    # Check if git-crypt is available
-    if ! command -v git-crypt &> /dev/null; then
-        echo "⚠️ git-crypt not available, checking file content manually"
-        
-        # Basic check: encrypted files typically have binary content or specific markers
-        # git-crypt encrypted files start with specific bytes
-        if file "$file" | grep -q "data" || head -c 10 "$file" | grep -q $'\x00GITCRYPT' 2>/dev/null; then
-            return 0  # Likely encrypted
-        else
-            # Check if file looks like readable YAML
-            if head -n 5 "$file" | grep -E "^[[:space:]]*[a-zA-Z_][a-zA-Z0-9_]*[[:space:]]*:" &>/dev/null; then
-                return 1  # Looks like plain text YAML
-            fi
-        fi
-        
-        return 0  # Default to encrypted if uncertain
-    fi
-    
-    # Use git-crypt to check encryption status
-    # git-crypt status returns 0 if file is encrypted, 1 if not
-    if git-crypt status "$file" 2>/dev/null | grep -q "encrypted"; then
+
+    # Check if file type is "data" (commonly indicates binary/encrypted content)
+    if file "$file" | grep -q "data"; then
         return 0  # Encrypted
-    else
-        return 1  # Not encrypted
     fi
+
+    # Check for specific git-crypt marker bytes
+    if head -c 10 "$file" 2>/dev/null | grep -q $'\x00GITCRYPT'; then
+        return 0  # Encrypted
+    fi
+
+    # Check if file looks like plain text YAML
+    if head -n 5 "$file" | grep -E "^[[:space:]]*[a-zA-Z_][a-zA-Z0-9_]*[[:space:]]*:" &>/dev/null; then
+        return 1  # Not encrypted (human-readable YAML)
+    fi
+
+    # If unsure, default to encrypted
+    return 0
 }
+
 
 # Process each changed file
 if [ -n "$CHANGED_YAML_FILES" ]; then
