@@ -149,11 +149,12 @@ jobs:
       with:
         script: |
           // Create a successful check run
+          const headSha: '${{ steps.pr-info.outputs.head_sha }}'
           const checkRun = await github.rest.checks.create({
             owner: context.repo.owner,
             repo: context.repo.repo,
             name: 'YAML Encryption Validation',
-            head_sha: '${{ steps.pr-info.outputs.head_sha }}',
+            head_sha: headSha,
             status: 'completed',
             conclusion: 'success',
             output: {
@@ -185,11 +186,12 @@ jobs:
           }
           
           // Create a neutral check run
+          const headSha: '${{ steps.pr-info.outputs.head_sha }}'
           const checkRun = await github.rest.checks.create({
             owner: context.repo.owner,
             repo: context.repo.repo,
             name: 'YAML Encryption Validation',
-            head_sha: '${{ steps.pr-info.outputs.head_sha }}',
+            head_sha: headSha,
             status: 'completed',
             conclusion: 'neutral',
             output: {
@@ -348,11 +350,13 @@ jobs:
             ? `Successfully validated ${process.env.VALID_K8S_FILES} changed Kubernetes YAML files`
             : `Found ${process.env.INVALID_K8S_FILES} invalid Kubernetes YAML files out of ${process.env.TOTAL_K8S_FILES} changed files`;
           
+            
+          const headSha: '${{ steps.kubeval-pr-info.outputs.head_sha }}'
           await github.rest.checks.create({
             owner: context.repo.owner,
             repo: context.repo.repo,
             name: 'Kubernetes YAML Validation',
-            head_sha: '${{ steps.kubeval-pr-info.outputs.head_sha }}',
+            head_sha: headSha,
             status: 'completed',
             conclusion: conclusion,
             output: {
@@ -394,11 +398,12 @@ jobs:
           }
           
           // Create a neutral check run
+          const headSha: '${{ steps.kubeval-pr-info.outputs.head_sha }}'
           await github.rest.checks.create({
             owner: context.repo.owner,
             repo: context.repo.repo,
             name: 'Kubernetes YAML Validation',
-            head_sha: '${{ steps.kubeval-pr-info.outputs.head_sha }}',
+            head_sha: headSha,
             status: 'completed',
             conclusion: 'neutral',
             output: {
