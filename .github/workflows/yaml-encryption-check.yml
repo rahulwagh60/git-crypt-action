@@ -1,0 +1,234 @@
+name: PR Encryption Scanner
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:  # Allow manual triggers for testing
+
+
+jobs:
+  scan-encryption:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        token: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Get changed files
+      id: changed-files
+      run: |
+        # Get the list of changed files in the PR
+        git fetch origin ${{ github.event.pull_request.base.ref }}
+        
+        # Get files that are added or modified
+        CHANGED_FILES=$(git diff --name-only --diff-filter=AM origin/${{ github.event.pull_request.base.ref }}...HEAD)
+        
+        echo "Changed files:"
+        echo "$CHANGED_FILES"
+        
+        # Save to file for next step
+        echo "$CHANGED_FILES" > changed_files.txt
+
+    - name: Extract encryption patterns from .gitattributes
+      id: get-patterns
+      run: |
+        # Extract patterns from .gitattributes that use git-crypt
+        if [ -f ".gitattributes" ]; then
+          # Look for lines containing 'filter=git-crypt' or 'diff=git-crypt'
+          PATTERNS=$(grep -E "(filter=git-crypt|diff=git-crypt)" .gitattributes | awk '{print $1}' | tr '\n' ' ')
+          echo "Encryption patterns found: $PATTERNS"
+          echo "patterns=$PATTERNS" >> $GITHUB_OUTPUT
+        else
+          echo "No .gitattributes file found"
+          echo "patterns=" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Make encryption checker script executable
+      run: |
+        # Make the encryption checker script executable
+        chmod +x scripts/encryption-checker.sh
+
+    - name: Scan files for encryption
+      id: scan-files
+      run: |
+        # Read patterns from previous step
+        PATTERNS="${{ steps.get-patterns.outputs.patterns }}"
+        
+        if [ -z "$PATTERNS" ]; then
+          echo "No encryption patterns found in .gitattributes"
+          exit 0
+        fi
+        
+        # Function to check if file matches any pattern
+        matches_pattern() {
+          local file="$1"
+          for pattern in $PATTERNS; do
+            # Convert glob pattern to regex-like matching
+            case "$file" in
+              $pattern) return 0 ;;
+            esac
+          done
+          return 1
+        }
+        
+        # Create list of files to scan
+        files_to_scan=""
+        while IFS= read -r file; do
+          if [ -n "$file" ] && [ -f "$file" ]; then
+            # Check if file matches encryption patterns
+            if matches_pattern "$file"; then
+              files_to_scan="$files_to_scan$file"
+
+    - name: Comment on PR
+      uses: actions/github-script@v7
+      if: steps.scan-files.outputs.total_scanned > 0
+      with:
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        script: |
+          const totalScanned = '${{ steps.scan-files.outputs.total_scanned }}';
+          const unencryptedCount = '${{ steps.scan-files.outputs.unencrypted_count }}';
+          const unencryptedFiles = `${{ steps.scan-files.outputs.unencrypted_files }}`;
+          
+          let commentBody = `## 🔐 Encryption Scan Results\n\n`;
+          commentBody += `**Files Scanned:** ${totalScanned}\n`;
+          commentBody += `**Unencrypted Files:** ${unencryptedCount}\n\n`;
+          
+          if (unencryptedCount > 0) {
+            commentBody += `### ⚠️ Unencrypted Files Found\n\n`;
+            commentBody += `The following files should be encrypted but appear to be in plain text:\n\n`;
+            commentBody += unencryptedFiles;
+            commentBody += `\n**Action Required:** Please ensure these files are properly encrypted using git-crypt before merging.\n\n`;
+            commentBody += `To encrypt files:\n`;
+            commentBody += `1. Run \`git-crypt lock\`\n`;
+            commentBody += `2. Add/modify the files\n`;
+            commentBody += `3. Run \`git-crypt unlock\` (if needed)\n`;
+            commentBody += `4. Commit and push the changes\n`;
+          } else {
+            commentBody += `### ✅ All Files Properly Encrypted\n\n`;
+            commentBody += `All scanned files appear to be properly encrypted. Great job! 🎉`;
+          }
+          
+          // Check if there's already a comment from this action
+          const comments = await github.rest.issues.listComments({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number: context.issue.number,
+          });
+          
+          const existingComment = comments.data.find(comment => 
+            comment.user.login === 'github-actions[bot]' && 
+            comment.body.includes('🔐 Encryption Scan Results')
+          );
+          
+          if (existingComment) {
+            // Update existing comment
+            await github.rest.issues.updateComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: existingComment.id,
+              body: commentBody
+            });
+          } else {
+            // Create new comment
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: commentBody
+            });
+          }
+
+    - name: Fail if unencrypted files found
+      if: steps.scan-files.outputs.unencrypted_count > 0
+      run: |
+        echo "❌ Found ${{ steps.scan-files.outputs.unencrypted_count }} unencrypted files"
+        echo "Please encrypt these files before merging the PR"
+        exit 1
+
+    - name: Warn if suspicious files found
+      if: steps.scan-files.outputs.suspicious_count > 0
+      run: |
+        echo "⚠️ Found ${{ steps.scan-files.outputs.suspicious_count }} suspicious files"
+        echo "Please manually verify these files before merging the PR"\n'
+            fi
+          fi
+        done < changed_files.txt
+        
+        # Run the encryption checker script
+        if [ -n "$files_to_scan" ]; then
+          echo "$files_to_scan" | ./scripts/encryption-checker.sh
+        else
+          echo "No files matching encryption patterns found"
+          echo "total_scanned=0" >> $GITHUB_OUTPUT
+          echo "encrypted_files=0" >> $GITHUB_OUTPUT
+          echo "unencrypted_count=0" >> $GITHUB_OUTPUT
+          echo "suspicious_count=0" >> $GITHUB_OUTPUT
+
+    - name: Comment on PR
+      uses: actions/github-script@v7
+      if: steps.scan-files.outputs.total_scanned > 0
+      with:
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        script: |
+          const totalScanned = '${{ steps.scan-files.outputs.total_scanned }}';
+          const unencryptedCount = '${{ steps.scan-files.outputs.unencrypted_count }}';
+          const unencryptedFiles = `${{ steps.scan-files.outputs.unencrypted_files }}`;
+          
+          let commentBody = `## 🔐 Encryption Scan Results\n\n`;
+          commentBody += `**Files Scanned:** ${totalScanned}\n`;
+          commentBody += `**Unencrypted Files:** ${unencryptedCount}\n\n`;
+          
+          if (unencryptedCount > 0) {
+            commentBody += `### ⚠️ Unencrypted Files Found\n\n`;
+            commentBody += `The following files should be encrypted but appear to be in plain text:\n\n`;
+            commentBody += unencryptedFiles;
+            commentBody += `\n**Action Required:** Please ensure these files are properly encrypted using git-crypt before merging.\n\n`;
+            commentBody += `To encrypt files:\n`;
+            commentBody += `1. Run \`git-crypt lock\`\n`;
+            commentBody += `2. Add/modify the files\n`;
+            commentBody += `3. Run \`git-crypt unlock\` (if needed)\n`;
+            commentBody += `4. Commit and push the changes\n`;
+          } else {
+            commentBody += `### ✅ All Files Properly Encrypted\n\n`;
+            commentBody += `All scanned files appear to be properly encrypted. Great job! 🎉`;
+          }
+          
+          // Check if there's already a comment from this action
+          const comments = await github.rest.issues.listComments({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number: context.issue.number,
+          });
+          
+          const existingComment = comments.data.find(comment => 
+            comment.user.login === 'github-actions[bot]' && 
+            comment.body.includes('🔐 Encryption Scan Results')
+          );
+          
+          if (existingComment) {
+            // Update existing comment
+            await github.rest.issues.updateComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: existingComment.id,
+              body: commentBody
+            });
+          } else {
+            // Create new comment
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: commentBody
+            });
+          }
+
+    - name: Fail if unencrypted files found
+      if: steps.scan-files.outputs.unencrypted_count > 0
+      run: |
+        echo "❌ Found ${{ steps.scan-files.outputs.unencrypted_count }} unencrypted files"
+        echo "Please encrypt these files before merging the PR"
+        exit 1
