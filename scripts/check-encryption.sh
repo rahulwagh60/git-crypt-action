@@ -107,7 +107,7 @@ is_file_encrypted() {
     fi
 
     # If unsure, default to encrypted
-    return 0
+    return 1
 }
 
 
