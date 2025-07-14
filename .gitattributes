@@ -2,4 +2,4 @@
 
 __*.yaml* filter=git-crypt diff=git-crypt linguist-generated=true
 
-__*.yaml filter=git-crypt diff=git-crypt 
+**/__*.yaml filter=git-crypt diff=git-crypt 
