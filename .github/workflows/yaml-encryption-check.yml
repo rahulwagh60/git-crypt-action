@@ -81,7 +81,9 @@ jobs:
             # Check if file matches encryption patterns
             if matches_pattern "$file"; then
               files_to_scan="$files_to_scan$file"
-
+            fi
+          fi
+        done
     - name: Comment on PR
       uses: actions/github-script@v7
       if: steps.scan-files.outputs.total_scanned > 0
