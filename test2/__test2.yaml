@@ -5,4 +5,4 @@ metadata:
 type: kubernetes.io/dockercfg
 data:
   .dockercfg: |
-    eyJhdXRocyI6eyJodHRwczovL2V4YW1wbGUvdjEvIjp7ImF1dGgiOiJ 
+    eyJhdXRocyI6eyJodHRwczovL2V4YW1wbGUvdjEvIjp7I
