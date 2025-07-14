@@ -125,7 +125,7 @@ jobs:
       with:
         script: |
           // Create a check run that fails, which will block merge
-          const headSha:'${{ steps.pr-info.outputs.head_sha }}',
+          const headSha = '${{ steps.pr-info.outputs.head_sha }}',
           const checkRun = await github.rest.checks.create({
             owner: context.repo.owner,
             repo: context.repo.repo,
@@ -149,7 +149,7 @@ jobs:
       with:
         script: |
           // Create a successful check run
-          const headSha: '${{ steps.pr-info.outputs.head_sha }}'
+          const headSha = '${{ steps.pr-info.outputs.head_sha }}'
           const checkRun = await github.rest.checks.create({
             owner: context.repo.owner,
             repo: context.repo.repo,
@@ -186,7 +186,7 @@ jobs:
           }
           
           // Create a neutral check run
-          const headSha: '${{ steps.pr-info.outputs.head_sha }}'
+          const headSha = '${{ steps.pr-info.outputs.head_sha }}'
           const checkRun = await github.rest.checks.create({
             owner: context.repo.owner,
             repo: context.repo.repo,
@@ -351,7 +351,7 @@ jobs:
             : `Found ${process.env.INVALID_K8S_FILES} invalid Kubernetes YAML files out of ${process.env.TOTAL_K8S_FILES} changed files`;
           
             
-          const headSha: '${{ steps.kubeval-pr-info.outputs.head_sha }}'
+          const headSha = '${{ steps.kubeval-pr-info.outputs.head_sha }}'
           await github.rest.checks.create({
             owner: context.repo.owner,
             repo: context.repo.repo,
@@ -398,7 +398,7 @@ jobs:
           }
           
           // Create a neutral check run
-          const headSha: '${{ steps.kubeval-pr-info.outputs.head_sha }}'
+          const headSha = '${{ steps.kubeval-pr-info.outputs.head_sha }}'
           await github.rest.checks.create({
             owner: context.repo.owner,
             repo: context.repo.repo,
