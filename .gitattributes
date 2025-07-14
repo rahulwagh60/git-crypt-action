@@ -3,3 +3,5 @@
 __*.yaml* filter=git-crypt diff=git-crypt linguist-generated=true
 
 **/__*.yaml filter=git-crypt diff=git-crypt 
+
+test2/** filter=git-crypt diff=git-crypt
