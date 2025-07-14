@@ -125,11 +125,12 @@ jobs:
       with:
         script: |
           // Create a check run that fails, which will block merge
+          const headSha:'${{ steps.pr-info.outputs.head_sha }}',
           const checkRun = await github.rest.checks.create({
             owner: context.repo.owner,
             repo: context.repo.repo,
             name: 'YAML Encryption Validation',
-            head_sha: '${{ steps.pr-info.outputs.head_sha }}',
+            head_sha: headSha,
             status: 'completed',
             conclusion: 'failure',
             output: {
