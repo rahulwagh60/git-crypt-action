@@ -1,13 +1,20 @@
-name: PR Encryption Scanner
+name: YAML Encryption Check
 
 on:
   pull_request:
     types: [opened, synchronize, reopened]
+    paths:
+      - '**/*.yaml'
+      - '**/*.yml'
   workflow_dispatch:  # Allow manual triggers for testing
 
+permissions:
+  contents: read
+  pull-requests: write
+  checks: write
 
 jobs:
-  scan-encryption:
+  check-yaml-encryption:
     runs-on: ubuntu-latest
     
     steps:
@@ -15,220 +22,404 @@ jobs:
       uses: actions/checkout@v4
       with:
         fetch-depth: 0
-        token: ${{ secrets.GITHUB_TOKEN }}
-
-    - name: Get changed files
+    
+    - name: Debug context
+      run: |
+        echo "Event name: ${{ github.event_name }}"
+        echo "Repository: ${{ github.repository }}"
+        echo "SHA: ${{ github.sha }}"
+        echo "PR number: ${{ github.event.pull_request.number }}"
+        echo "PR head SHA: ${{ github.event.pull_request.head.sha }}"
+        echo "Base SHA: ${{ github.event.pull_request.base.sha }}"
+    
+    - name: Get changed files in PR
       id: changed-files
       run: |
-        # Get the list of changed files in the PR
-        git fetch origin ${{ github.event.pull_request.base.ref }}
-        
-        # Get files that are added or modified
-        CHANGED_FILES=$(git diff --name-only --diff-filter=AM origin/${{ github.event.pull_request.base.ref }}...HEAD)
-        
-        echo "Changed files:"
-        echo "$CHANGED_FILES"
-        
-        # Save to file for next step
-        echo "$CHANGED_FILES" > changed_files.txt
-
-    - name: Extract encryption patterns from .gitattributes
-      id: get-patterns
+        chmod +x ./scripts/get-changed-files.sh
+        ./scripts/get-changed-files.sh
+    
+    - name: Run YAML encryption check on changed files
+      if: env.HAS_CHANGED_FILES == 'true'
+      id: encryption-check
       run: |
-        # Extract patterns from .gitattributes that use git-crypt
-        if [ -f ".gitattributes" ]; then
-          # Look for lines containing 'filter=git-crypt' or 'diff=git-crypt'
-          PATTERNS=$(grep -E "(filter=git-crypt|diff=git-crypt)" .gitattributes | awk '{print $1}' | tr '\n' ' ')
-          echo "Encryption patterns found: $PATTERNS"
-          echo "patterns=$PATTERNS" >> $GITHUB_OUTPUT
+        chmod +x ./scripts/check-encryption.sh
+        ./scripts/check-encryption.sh
+        echo "script_exit_code=$?" >> $GITHUB_OUTPUT
+      continue-on-error: true
+    
+    - name: Set PR variables
+      id: pr-info
+      run: |
+        if [ "${{ github.event_name }}" = "pull_request" ]; then
+          echo "pr_number=${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
+          echo "head_sha=${{ github.event.pull_request.head.sha }}" >> $GITHUB_OUTPUT
+          echo "is_pr=true" >> $GITHUB_OUTPUT
         else
-          echo "No .gitattributes file found"
-          echo "patterns=" >> $GITHUB_OUTPUT
+          echo "head_sha=${{ github.sha }}" >> $GITHUB_OUTPUT
+          echo "is_pr=false" >> $GITHUB_OUTPUT
         fi
-
-    - name: Make encryption checker script executable
-      run: |
-        # Make the encryption checker script executable
-        chmod +x scripts/encryption-checker.sh
-
-    - name: Scan files for encryption
-      id: scan-files
-      run: |
-        # Read patterns from previous step
-        PATTERNS="${{ steps.get-patterns.outputs.patterns }}"
-        
-        if [ -z "$PATTERNS" ]; then
-          echo "No encryption patterns found in .gitattributes"
-          exit 0
-        fi
-        
-        # Function to check if file matches any pattern
-        matches_pattern() {
-          local file="$1"
-          for pattern in $PATTERNS; do
-            # Convert glob pattern to regex-like matching
-            case "$file" in
-              $pattern) return 0 ;;
-            esac
-          done
-          return 1
-        }
-        
-        # Create list of files to scan
-        files_to_scan=""
-        while IFS= read -r file; do
-          if [ -n "$file" ] && [ -f "$file" ]; then
-            # Check if file matches encryption patterns
-            if matches_pattern "$file"; then
-              files_to_scan="$files_to_scan$file"
-
-    - name: Comment on PR
+    
+    - name: Create PR comment for encrypted files
+      if: env.UNENCRYPTED_COUNT == '0' && env.ENCRYPTED_COUNT != '0' && steps.pr-info.outputs.is_pr == 'true'
       uses: actions/github-script@v7
-      if: steps.scan-files.outputs.total_scanned > 0
       with:
-        github-token: ${{ secrets.GITHUB_TOKEN }}
         script: |
-          const totalScanned = '${{ steps.scan-files.outputs.total_scanned }}';
-          const unencryptedCount = '${{ steps.scan-files.outputs.unencrypted_count }}';
-          const unencryptedFiles = `${{ steps.scan-files.outputs.unencrypted_files }}`;
+          const comment = `## 🔒 YAML Encryption Check - PASSED ✅
           
-          let commentBody = `## 🔐 Encryption Scan Results\n\n`;
-          commentBody += `**Files Scanned:** ${totalScanned}\n`;
-          commentBody += `**Unencrypted Files:** ${unencryptedCount}\n\n`;
+          All changed files matching encryption patterns are properly encrypted!
           
-          if (unencryptedCount > 0) {
-            commentBody += `### ⚠️ Unencrypted Files Found\n\n`;
-            commentBody += `The following files should be encrypted but appear to be in plain text:\n\n`;
-            commentBody += unencryptedFiles;
-            commentBody += `\n**Action Required:** Please ensure these files are properly encrypted using git-crypt before merging.\n\n`;
-            commentBody += `To encrypt files:\n`;
-            commentBody += `1. Run \`git-crypt lock\`\n`;
-            commentBody += `2. Add/modify the files\n`;
-            commentBody += `3. Run \`git-crypt unlock\` (if needed)\n`;
-            commentBody += `4. Commit and push the changes\n`;
-          } else {
-            commentBody += `### ✅ All Files Properly Encrypted\n\n`;
-            commentBody += `All scanned files appear to be properly encrypted. Great job! 🎉`;
-          }
+          **Summary:**
+          - 📁 Changed encrypted files: ${process.env.ENCRYPTED_COUNT}
+          - ✅ All required files are encrypted based on .gitattributes patterns
           
-          // Check if there's already a comment from this action
-          const comments = await github.rest.issues.listComments({
+          The pull request can be safely merged. 🚀`;
+          
+          await github.rest.issues.createComment({
+            issue_number: ${{ steps.pr-info.outputs.pr_number }},
             owner: context.repo.owner,
             repo: context.repo.repo,
-            issue_number: context.issue.number,
+            body: comment
+          });
+    
+    - name: Create PR comment for unencrypted files
+      if: env.UNENCRYPTED_COUNT != '0' && steps.pr-info.outputs.is_pr == 'true'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const unencryptedFiles = process.env.UNENCRYPTED_FILES || '';
+          const filesList = unencryptedFiles.split('\n').filter(f => f.trim()).map(f => `- \`${f}\``).join('\n');
+          
+          const comment = `## 🚨 YAML Encryption Check - FAILED ❌
+          
+          **Security Warning:** Unencrypted files detected that should be encrypted according to .gitattributes patterns!
+          
+          **Summary:**
+          - 📁 Total files checked: ${parseInt(process.env.ENCRYPTED_COUNT || '0') + parseInt(process.env.UNENCRYPTED_COUNT || '0')}
+          - ✅ Encrypted files: ${process.env.ENCRYPTED_COUNT || '0'}
+          - ❌ **Unencrypted files: ${process.env.UNENCRYPTED_COUNT || '0'}**
+          
+          **Unencrypted files found in this PR:**
+          ${filesList}
+          
+          **⚠️ Action Required:**
+          Please encrypt these files before merging this pull request. Files matching patterns in .gitattributes should be encrypted using git-crypt.
+          
+          **How to fix:**
+          1. Ensure git-crypt is set up in your repository
+          2. Encrypt the files using git-crypt
+          3. Push the encrypted files to this branch
+          4. The check will run automatically again
+          
+          **🔒 Merge is currently blocked until all files are encrypted.**`;
+          
+          await github.rest.issues.createComment({
+            issue_number: ${{ steps.pr-info.outputs.pr_number }},
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: comment
+          });
+    
+    - name: Block merge if unencrypted files found
+      if: env.UNENCRYPTED_COUNT != '0'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          // Create a check run that fails, which will block merge
+          const checkRun = await github.rest.checks.create({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            name: 'YAML Encryption Validation',
+            head_sha: '${{ steps.pr-info.outputs.head_sha }}',
+            status: 'completed',
+            conclusion: 'failure',
+            output: {
+              title: 'Unencrypted files detected in PR changes',
+              summary: `Found ${process.env.UNENCRYPTED_COUNT} unencrypted files that should be encrypted according to .gitattributes patterns.`,
+              text: `The following files need to be encrypted:\n\n${process.env.UNENCRYPTED_FILES || 'No files listed'}`
+            }
           });
           
-          const existingComment = comments.data.find(comment => 
-            comment.user.login === 'github-actions[bot]' && 
-            comment.body.includes('🔐 Encryption Scan Results')
-          );
-          
-          if (existingComment) {
-            // Update existing comment
-            await github.rest.issues.updateComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              comment_id: existingComment.id,
-              body: commentBody
-            });
-          } else {
-            // Create new comment
+          // Also set the action as failed
+          core.setFailed(`Found ${process.env.UNENCRYPTED_COUNT} unencrypted files that should be encrypted`);
+    
+    - name: Success check for encrypted files
+      if: env.UNENCRYPTED_COUNT == '0' && env.ENCRYPTED_COUNT != '0'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          // Create a successful check run
+          const checkRun = await github.rest.checks.create({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            name: 'YAML Encryption Validation',
+            head_sha: '${{ steps.pr-info.outputs.head_sha }}',
+            status: 'completed',
+            conclusion: 'success',
+            output: {
+              title: 'All required files are encrypted',
+              summary: `Successfully verified ${process.env.ENCRYPTED_COUNT} files that match encryption patterns.`,
+              text: 'All files matching encryption patterns in .gitattributes are properly encrypted. ✅'
+            }
+          });
+    
+    - name: Handle no changed files case
+      if: env.HAS_CHANGED_FILES == 'false'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          // Only comment if this is a pull request
+          if ('${{ steps.pr-info.outputs.is_pr }}' === 'true') {
+            const comment = `## 🔍 YAML Encryption Check - NO FILES TO CHECK ℹ️
+            
+            No files matching encryption patterns were changed in this pull request.
+            
+            The encryption check validates files based on patterns defined in .gitattributes that require git-crypt encryption.`;
+            
             await github.rest.issues.createComment({
+              issue_number: ${{ steps.pr-info.outputs.pr_number }},
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: context.issue.number,
-              body: commentBody
+              body: comment
             });
           }
-
-    - name: Fail if unencrypted files found
-      if: steps.scan-files.outputs.unencrypted_count > 0
+          
+          // Create a neutral check run
+          const checkRun = await github.rest.checks.create({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            name: 'YAML Encryption Validation',
+            head_sha: '${{ steps.pr-info.outputs.head_sha }}',
+            status: 'completed',
+            conclusion: 'neutral',
+            output: {
+              title: 'No files to check for encryption',
+              summary: 'No files matching encryption patterns were changed in this PR.',
+              text: 'This PR does not contain any changes to files that require encryption.'
+            }
+          });
+    
+    - name: Summary
       run: |
-        echo "❌ Found ${{ steps.scan-files.outputs.unencrypted_count }} unencrypted files"
-        echo "Please encrypt these files before merging the PR"
-        exit 1
-
-    - name: Warn if suspicious files found
-      if: steps.scan-files.outputs.suspicious_count > 0
-      run: |
-        echo "⚠️ Found ${{ steps.scan-files.outputs.suspicious_count }} suspicious files"
-        echo "Please manually verify these files before merging the PR"\n'
-            fi
+        echo "=== YAML Encryption Check Summary ==="
+        if [ "${{ env.HAS_CHANGED_FILES }}" = "true" ]; then
+          echo "Files requiring encryption: ${ENCRYPTED_COUNT:-0}"
+          echo "Unencrypted files found: ${UNENCRYPTED_COUNT:-0}"
+          echo "Check result: ${{ steps.encryption-check.outputs.script_exit_code == '0' && 'PASSED' || 'FAILED' }}"
+          
+          if [ "${UNENCRYPTED_COUNT:-0}" != "0" ]; then
+            echo "⚠️ Action failed due to unencrypted files"
+            exit 1
           fi
-        done < changed_files.txt
-        
-        # Run the encryption checker script
-        if [ -n "$files_to_scan" ]; then
-          echo "$files_to_scan" | ./scripts/encryption-checker.sh
         else
-          echo "No files matching encryption patterns found"
-          echo "total_scanned=0" >> $GITHUB_OUTPUT
-          echo "encrypted_files=0" >> $GITHUB_OUTPUT
-          echo "unencrypted_count=0" >> $GITHUB_OUTPUT
-          echo "suspicious_count=0" >> $GITHUB_OUTPUT
+          echo "No files requiring encryption checks were changed"
+        fi
 
-    - name: Comment on PR
-      uses: actions/github-script@v7
-      if: steps.scan-files.outputs.total_scanned > 0
+  validate-kubernetes-yaml:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
       with:
-        github-token: ${{ secrets.GITHUB_TOKEN }}
+        fetch-depth: 0
+    
+    - name: Set up kubeval
+      run: |
+        # Download and install kubeval
+        wget https://github.com/instrumenta/kubeval/releases/latest/download/kubeval-linux-amd64.tar.gz
+        tar xf kubeval-linux-amd64.tar.gz
+        sudo mv kubeval /usr/local/bin/
+        chmod +x /usr/local/bin/kubeval
+        
+        # Verify installation
+        kubeval --version
+    
+    - name: Get changed Kubernetes YAML files in PR
+      id: changed-k8s-files
+      run: |
+        chmod +x ./scripts/get-k8s-files.sh
+        ./scripts/get-k8s-files.sh
+    
+    - name: Validate changed Kubernetes YAML files
+      if: env.K8S_FILES_FOUND == 'true'
+      id: kubeval-check
+      run: |
+        chmod +x ./scripts/validate-kubernetes-yaml.sh
+        ./scripts/validate-kubernetes-yaml.sh
+      continue-on-error: true
+    
+    - name: Set PR variables for kubeval
+      id: kubeval-pr-info
+      run: |
+        if [ "${{ github.event_name }}" = "pull_request" ]; then
+          echo "pr_number=${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
+          echo "head_sha=${{ github.event.pull_request.head.sha }}" >> $GITHUB_OUTPUT
+          echo "is_pr=true" >> $GITHUB_OUTPUT
+        else
+          echo "head_sha=${{ github.sha }}" >> $GITHUB_OUTPUT
+          echo "is_pr=false" >> $GITHUB_OUTPUT
+        fi
+    
+    - name: Create PR comment for valid K8s files
+      if: env.INVALID_K8S_FILES == '0' && env.VALID_K8S_FILES != '0' && steps.kubeval-pr-info.outputs.is_pr == 'true'
+      uses: actions/github-script@v7
+      with:
         script: |
-          const totalScanned = '${{ steps.scan-files.outputs.total_scanned }}';
-          const unencryptedCount = '${{ steps.scan-files.outputs.unencrypted_count }}';
-          const unencryptedFiles = `${{ steps.scan-files.outputs.unencrypted_files }}`;
+          const comment = `## ⚓ Kubernetes YAML Validation - PASSED ✅
           
-          let commentBody = `## 🔐 Encryption Scan Results\n\n`;
-          commentBody += `**Files Scanned:** ${totalScanned}\n`;
-          commentBody += `**Unencrypted Files:** ${unencryptedCount}\n\n`;
+          All changed Kubernetes YAML files are valid and conform to the Kubernetes API schema!
           
-          if (unencryptedCount > 0) {
-            commentBody += `### ⚠️ Unencrypted Files Found\n\n`;
-            commentBody += `The following files should be encrypted but appear to be in plain text:\n\n`;
-            commentBody += unencryptedFiles;
-            commentBody += `\n**Action Required:** Please ensure these files are properly encrypted using git-crypt before merging.\n\n`;
-            commentBody += `To encrypt files:\n`;
-            commentBody += `1. Run \`git-crypt lock\`\n`;
-            commentBody += `2. Add/modify the files\n`;
-            commentBody += `3. Run \`git-crypt unlock\` (if needed)\n`;
-            commentBody += `4. Commit and push the changes\n`;
-          } else {
-            commentBody += `### ✅ All Files Properly Encrypted\n\n`;
-            commentBody += `All scanned files appear to be properly encrypted. Great job! 🎉`;
-          }
+          **Summary:**
+          - 📄 Changed K8s files validated: ${process.env.TOTAL_K8S_FILES}
+          - ✅ Valid files: ${process.env.VALID_K8S_FILES}
+          - ❌ Invalid files: 0
           
-          // Check if there's already a comment from this action
-          const comments = await github.rest.issues.listComments({
+          **Validated changed files:**
+          ${process.env.VALID_FILES_LIST.split('\n').map(f => f.trim()).filter(f => f).map(f => `- \`${f}\``).join('\n')}
+          
+          Your Kubernetes manifests are ready for deployment! 🚀`;
+          
+          await github.rest.issues.createComment({
+            issue_number: ${{ steps.kubeval-pr-info.outputs.pr_number }},
             owner: context.repo.owner,
             repo: context.repo.repo,
-            issue_number: context.issue.number,
+            body: comment
+          });
+    
+    - name: Create PR comment for invalid K8s files
+      if: env.INVALID_K8S_FILES != '0' && steps.kubeval-pr-info.outputs.is_pr == 'true'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const invalidFiles = process.env.INVALID_FILES_LIST || '';
+          const invalidFilesList = invalidFiles.split('\n').filter(f => f.trim()).map(f => `- \`${f}\``).join('\n');
+          
+          const validFiles = process.env.VALID_FILES_LIST || '';
+          const validFilesList = validFiles.split('\n').filter(f => f.trim()).map(f => `- \`${f}\``).join('\n');
+          
+          const comment = `## ⚠️ Kubernetes YAML Validation - FAILED ❌
+          
+          **Validation Error:** Some changed Kubernetes YAML files failed validation against the Kubernetes API schema!
+          
+          **Summary:**
+          - 📄 Changed K8s files checked: ${process.env.TOTAL_K8S_FILES}
+          - ✅ Valid files: ${process.env.VALID_K8S_FILES}
+          - ❌ **Invalid files: ${process.env.INVALID_K8S_FILES}**
+          
+          **❌ Invalid changed files:**
+          ${invalidFilesList}
+          
+          ${validFilesList ? `**✅ Valid changed files:**\n${validFilesList}\n` : ''}
+          
+          **🔧 How to fix:**
+          1. Review the kubeval output in the action logs for specific validation errors
+          2. Check for typos in field names, incorrect indentation, or invalid values
+          3. Ensure your YAML follows the Kubernetes API schema
+          4. Common issues:
+             - Incorrect \`apiVersion\` for your Kubernetes cluster
+             - Missing required fields
+             - Invalid resource specifications
+          5. Fix the issues and push your changes
+          
+          **📚 Resources:**
+          - [Kubernetes API Reference](https://kubernetes.io/docs/reference/)
+          - [Kubeval Documentation](https://github.com/instrumenta/kubeval)
+          
+          **🔒 Consider blocking merge until validation passes.**`;
+          
+          await github.rest.issues.createComment({
+            issue_number: ${{ steps.kubeval-pr-info.outputs.pr_number }},
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: comment
+          });
+    
+    - name: Create check for K8s validation results
+      if: env.K8S_FILES_FOUND == 'true'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const conclusion = process.env.INVALID_K8S_FILES === '0' ? 'success' : 'failure';
+          const title = process.env.INVALID_K8S_FILES === '0' 
+            ? 'All changed Kubernetes YAML files are valid' 
+            : 'Changed Kubernetes YAML validation failed';
+          const summary = process.env.INVALID_K8S_FILES === '0'
+            ? `Successfully validated ${process.env.VALID_K8S_FILES} changed Kubernetes YAML files`
+            : `Found ${process.env.INVALID_K8S_FILES} invalid Kubernetes YAML files out of ${process.env.TOTAL_K8S_FILES} changed files`;
+          
+          await github.rest.checks.create({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            name: 'Kubernetes YAML Validation',
+            head_sha: '${{ steps.kubeval-pr-info.outputs.head_sha }}',
+            status: 'completed',
+            conclusion: conclusion,
+            output: {
+              title: title,
+              summary: summary,
+              text: process.env.INVALID_K8S_FILES === '0' 
+                ? `Valid changed files:\n${process.env.VALID_FILES_LIST || 'None'}`
+                : `Invalid changed files:\n${process.env.INVALID_FILES_LIST || 'None'}\n\nValid changed files:\n${process.env.VALID_FILES_LIST || 'None'}`
+            }
           });
           
-          const existingComment = comments.data.find(comment => 
-            comment.user.login === 'github-actions[bot]' && 
-            comment.body.includes('🔐 Encryption Scan Results')
-          );
-          
-          if (existingComment) {
-            // Update existing comment
-            await github.rest.issues.updateComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              comment_id: existingComment.id,
-              body: commentBody
-            });
-          } else {
-            // Create new comment
+          if (process.env.INVALID_K8S_FILES !== '0') {
+            core.setFailed(`Found ${process.env.INVALID_K8S_FILES} invalid changed Kubernetes YAML files`);
+          }
+    
+    - name: Handle no changed K8s files case
+      if: env.K8S_FILES_FOUND == 'false'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          // Only comment if this is a pull request
+          if ('${{ steps.kubeval-pr-info.outputs.is_pr }}' === 'true') {
+            const comment = `## ⚓ Kubernetes YAML Validation - NO CHANGED FILES ℹ️
+            
+            No Kubernetes YAML files were changed in this pull request.
+            
+            **Search criteria for changed files:**
+            - Files with paths containing: k8s, kubernetes, manifests, deployment, service, ingress, configmap, secret
+            - Files containing \`apiVersion:\` or \`kind:\` fields
+            
+            The validation only checks files that are added, modified, or renamed in the PR.`;
+            
             await github.rest.issues.createComment({
+              issue_number: ${{ steps.kubeval-pr-info.outputs.pr_number }},
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: context.issue.number,
-              body: commentBody
+              body: comment
             });
           }
-
-    - name: Fail if unencrypted files found
-      if: steps.scan-files.outputs.unencrypted_count > 0
+          
+          // Create a neutral check run
+          await github.rest.checks.create({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            name: 'Kubernetes YAML Validation',
+            head_sha: '${{ steps.kubeval-pr-info.outputs.head_sha }}',
+            status: 'completed',
+            conclusion: 'neutral',
+            output: {
+              title: 'No changed Kubernetes YAML files to validate',
+              summary: 'No Kubernetes YAML files changed in this PR.',
+              text: 'This PR does not contain any changes to files that appear to be Kubernetes manifests.'
+            }
+          });
+    
+    - name: Kubeval Summary
       run: |
-        echo "❌ Found ${{ steps.scan-files.outputs.unencrypted_count }} unencrypted files"
-        echo "Please encrypt these files before merging the PR"
-        exit 1
+        echo "=== Kubernetes YAML Validation Summary ==="
+        if [ "${{ env.K8S_FILES_FOUND }}" = "true" ]; then
+          echo "Total changed K8s files: ${TOTAL_K8S_FILES:-0}"
+          echo "Valid files: ${VALID_K8S_FILES:-0}"
+          echo "Invalid files: ${INVALID_K8S_FILES:-0}"
+          
+          if [ "${INVALID_K8S_FILES:-0}" -eq 0 ]; then
+            echo "Validation result: PASSED"
+          else
+            echo "Validation result: FAILED"
+          fi
+        else
+          echo "No Kubernetes YAML files changed."
+        fi
