@@ -445,10 +445,12 @@ jobs:
         git fetch origin ${{ github.base_ref }}:${{ github.base_ref }}
         echo "Base branch ${{ github.base_ref }} fetched successfully"
     
-    - name: Set up kubeconform
-      uses: brimdata/setup-kubeconform@v1
+    - name: Set up Kubeconform
+      id: setup-kubeconform
+      uses: bmuschko/setup-kubeconform@v1
       with:
-        version: v0.6.7  # Use latest stable version
+        kubeconform-version: '0.6.6'
+
     
     - name: Get changed Kubernetes YAML files in PR
       id: changed-k8s-files
