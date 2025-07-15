@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  abcd: nginx
+spec:
+  abcd:
+  - name: nginx
+    JSHDFK: nginx:1.14.2
+    ports:
+    - containerPort: 80
