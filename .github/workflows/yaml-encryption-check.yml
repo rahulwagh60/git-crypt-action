@@ -445,12 +445,20 @@ jobs:
         git fetch origin ${{ github.base_ref }}:${{ github.base_ref }}
         echo "Base branch ${{ github.base_ref }} fetched successfully"
     
-    - name: Install kubeconform
-      run: |
-        curl -sSL -o kubeconform.tar.gz https://github.com/yannh/kubeconform/releases/download/v0.6.4/kubeconform-linux-amd64.tar.gz
-        tar -xzf kubeconform.tar.gz
-        sudo mv kubeconform /usr/local/bin/
-        kubeconform -v
+    # - name: Install kubeconform
+    #   run: |
+    #     curl -sSL -o kubeconform.tar.gz https://github.com/yannh/kubeconform/releases/download/v0.6.4/kubeconform-linux-amd64.tar.gz
+    #     tar -xzf kubeconform.tar.gz
+    #     sudo mv kubeconform /usr/local/bin/
+    #     kubeconform -v
+
+    - name: Setup kubeconform
+      uses: yokawasa/action-setup-kube-tools@v0.11.2
+      with:
+        kubeconform: '0.6.4'
+
+    - name: Verify kubeconform installation
+      run: kubeconform -v
 
     
     # - name: Get changed YAML files
@@ -465,7 +473,7 @@ jobs:
     #       echo "ANY_CHANGED=true" >> "$GITHUB_ENV"
     #       echo "ALL_CHANGED_FILES=$CHANGED" >> "$GITHUB_ENV"
     #     fi
-    
+
 
     - name: Set environment variables
       run: |

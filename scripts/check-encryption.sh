@@ -92,6 +92,7 @@ should_be_encrypted() {
 is_file_encrypted() {
     local file="$1"
 
+
     # Check if file type is "data" (typically indicates binary/encrypted content)
     if file "$file" | grep -q "data"; then
         return 0  # Encrypted
