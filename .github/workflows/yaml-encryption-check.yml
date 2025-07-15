@@ -445,19 +445,26 @@ jobs:
         git fetch origin ${{ github.base_ref }}:${{ github.base_ref }}
         echo "Base branch ${{ github.base_ref }} fetched successfully"
     
-    - name: Set up Kubeconform
-      id: setup-kubeconform
-      uses: bmuschko/setup-kubeconform@v1
-      with:
-        kubeconform-version: '0.6.6'
+    - name: Install kubeconform
+      run: |
+        curl -sSL -o kubeconform.tar.gz https://github.com/yannh/kubeconform/releases/download/v0.6.4/kubeconform-linux-amd64.tar.gz
+        tar -xzf kubeconform.tar.gz
+        sudo mv kubeconform /usr/local/bin/
+        kubeconform --version
+
     
-    - name: Get changed Kubernetes YAML files in PR
+    - name: Get changed YAML files
       id: changed-k8s-files
-      uses: tj-actions/changed-files@v40
-      with:
-        files: |
-          **/*.yaml
-          **/*.yml
+      run: |
+        echo "ANY_CHANGED=false" >> "$GITHUB_ENV"
+        echo "ALL_CHANGED_FILES=" >> "$GITHUB_ENV"
+
+        CHANGED=$(git diff --name-only origin/main...HEAD | grep -E '\.ya?ml$' || true)
+
+        if [ -n "$CHANGED" ]; then
+          echo "ANY_CHANGED=true" >> "$GITHUB_ENV"
+          echo "ALL_CHANGED_FILES=$CHANGED" >> "$GITHUB_ENV"
+        fi
 
     - name: Set environment variables
       run: |
