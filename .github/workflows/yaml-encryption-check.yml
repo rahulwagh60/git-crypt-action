@@ -220,13 +220,18 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+
+    - name: Set up Kubeconform
+      id: setup-kubeconform
+      uses: bmuschko/setup-kubeconform@v1
       with:
-        fetch-depth: 0
-    
-    - name: Set up kubeconform
-      uses: brimdata/setup-kubeconform@v1
-      with:
-        version: v0.6.7  # Use latest stable version
+        kubeconform-version: '0.6.6'
+
+    - name: Validate Kubernetes manifests
+      run: |
+        echo "Kubeconform installed at: ${{ steps.setup-kubeconform.outputs.installation-path }}"
+        kubeconform -summary -verbose .
+      shell: bash
     
     - name: Get changed Kubernetes YAML files in PR
       id: changed-k8s-files
@@ -415,6 +420,7 @@ jobs:
           echo "Valid files: ${VALID_K8S_FILES:-0}"
           echo "Invalid files: ${INVALID_K8S_FILES:-0}"
           
+
           if [ "${INVALID_K8S_FILES:-0}" -eq 0 ]; then
             echo "Validation result: PASSED"
           else
