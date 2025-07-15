@@ -450,7 +450,7 @@ jobs:
         curl -sSL -o kubeconform.tar.gz https://github.com/yannh/kubeconform/releases/download/v0.6.4/kubeconform-linux-amd64.tar.gz
         tar -xzf kubeconform.tar.gz
         sudo mv kubeconform /usr/local/bin/
-        kubeconform --version
+        kubeconform -v
 
     
     - name: Get changed YAML files
