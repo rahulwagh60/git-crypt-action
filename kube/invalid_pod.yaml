@@ -5,6 +5,6 @@ metadata:
 spec:
   abcd:
   - name: nginx
-    xyzt: nginx:1.14.2
+    JSHDFK: nginx:1.14.2
     ports:
     - containerPort: 80
