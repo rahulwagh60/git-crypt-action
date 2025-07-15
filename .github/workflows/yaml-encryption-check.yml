@@ -465,10 +465,10 @@ jobs:
         echo "ALL_CHANGED_FILES='${{ steps.changed-k8s-files.outputs.all_changed_files }}'" >> $GITHUB_ENV
 
     - name: Make script executable
-      run: chmod +x scripts/identify-k8s-files.sh
+      run: chmod +x scripts/get-k8s-files.sh
 
     - name: Run Kubernetes file detection script
-      run: ./scripts/identify-k8s-files.sh
+      run: ./scripts/get-k8s-files.sh
     
     # - name: Identify Kubernetes files
     #   id: k8s-files
