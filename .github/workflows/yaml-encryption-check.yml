@@ -450,7 +450,6 @@ jobs:
       uses: bmuschko/setup-kubeconform@v1
       with:
         kubeconform-version: '0.6.6'
-
     
     - name: Get changed Kubernetes YAML files in PR
       id: changed-k8s-files
@@ -459,56 +458,67 @@ jobs:
         files: |
           **/*.yaml
           **/*.yml
-    
-    - name: Identify Kubernetes files
-      id: k8s-files
+
+    - name: Set environment variables
       run: |
-        K8S_FILES=""
-        K8S_FILES_FOUND="false"
+        echo "ANY_CHANGED=${{ steps.changed-k8s-files.outputs.any_changed }}" >> $GITHUB_ENV
+        echo "ALL_CHANGED_FILES='${{ steps.changed-k8s-files.outputs.all_changed_files }}'" >> $GITHUB_ENV
+
+    - name: Make script executable
+      run: chmod +x scripts/identify-k8s-files.sh
+
+    - name: Run Kubernetes file detection script
+      run: ./scripts/identify-k8s-files.sh
+    
+    # - name: Identify Kubernetes files
+    #   id: k8s-files
+    #   run: |
+    #     K8S_FILES=""
+    #     K8S_FILES_FOUND="false"
         
-        # Check if any YAML files changed
-        if [ "${{ steps.changed-k8s-files.outputs.any_changed }}" == "true" ]; then
-          echo "Changed YAML files: ${{ steps.changed-k8s-files.outputs.all_changed_files }}"
+    #     # Check if any YAML files changed
+    #     if [ "${{ steps.changed-k8s-files.outputs.any_changed }}" == "true" ]; then
+    #       echo "Changed YAML files: ${{ steps.changed-k8s-files.outputs.all_changed_files }}"
           
-          # Process each changed file
-          for file in ${{ steps.changed-k8s-files.outputs.all_changed_files }}; do
-            echo "Checking file: $file"
+    #       # Process each changed file
+    #       for file in ${{ steps.changed-k8s-files.outputs.all_changed_files }}; do
+    #         echo "Checking file: $file"
             
-            # Skip workflow files
-            if [[ "$file" == .github/workflows/* ]]; then
-              echo "  → Skipping workflow file: $file"
-              continue
-            fi
+    #         # Skip workflow files
+    #         if [[ "$file" == .github/workflows/* ]]; then
+    #           echo "  → Skipping workflow file: $file"
+    #           continue
+    #         fi
             
-            # Check if file exists (not deleted)
-            if [ -f "$file" ]; then
-              # Check for Kubernetes manifest indicators
-              if grep -q "apiVersion:" "$file" 2>/dev/null && grep -q "kind:" "$file" 2>/dev/null; then
-                echo "  → Kubernetes manifest detected: $file"
-                K8S_FILES="$K8S_FILES$file\n"
-                K8S_FILES_FOUND="true"
-              elif [[ "$file" == *k8s* ]] || [[ "$file" == *kubernetes* ]] || [[ "$file" == *manifests* ]]; then
-                echo "  → Kubernetes manifest detected by path: $file"
-                K8S_FILES="$K8S_FILES$file\n"
-                K8S_FILES_FOUND="true"
-              else
-                echo "  → Not a Kubernetes manifest: $file"
-              fi
-            else
-              echo "  → File deleted or not found: $file"
-            fi
-          done
+    #         # Check if file exists (not deleted)
+    #         if [ -f "$file" ]; then
+    #           # Check for Kubernetes manifest indicators
+    #           if grep -q "apiVersion:" "$file" 2>/dev/null && grep -q "kind:" "$file" 2>/dev/null; then
+    #             echo "  → Kubernetes manifest detected: $file"
+    #             K8S_FILES="$K8S_FILES$file\n"
+    #             K8S_FILES_FOUND="true"
+    #           elif [[ "$file" == *k8s* ]] || [[ "$file" == *kubernetes* ]] || [[ "$file" == *manifests* ]]; then
+    #             echo "  → Kubernetes manifest detected by path: $file"
+    #             K8S_FILES="$K8S_FILES$file\n"
+    #             K8S_FILES_FOUND="true"
+    #           else
+    #             echo "  → Not a Kubernetes manifest: $file"
+    #           fi
+    #         else
+    #           echo "  → File deleted or not found: $file"
+    #         fi
+    #       done
           
-          # Clean up the files list
-          K8S_FILES=$(echo -e "$K8S_FILES" | sed '/^$/d')
-        else
-          echo "No YAML files changed"
-        fi
+    #       # Clean up the files list
+    #       K8S_FILES=$(echo -e "$K8S_FILES" | sed '/^$/d')
+    #     else
+    #       echo "No YAML files changed"
+    #     fi
         
-        echo "K8S_FILES_FOUND=$K8S_FILES_FOUND" >> "$GITHUB_ENV"
-        echo "K8S_YAML_FILES<<EOF" >> "$GITHUB_ENV"
-        echo -e "$K8S_FILES" >> "$GITHUB_ENV"
-        echo "EOF" >> "$GITHUB_ENV"
+    #     echo "K8S_FILES_FOUND=$K8S_FILES_FOUND" >> "$GITHUB_ENV"
+    #     echo "K8S_YAML_FILES<<EOF" >> "$GITHUB_ENV"
+    #     echo -e "$K8S_FILES" >> "$GITHUB_ENV"
+    #     echo "EOF" >> "$GITHUB_ENV"
     
     - name: Validate changed Kubernetes YAML files
       if: env.K8S_FILES_FOUND == 'true'
