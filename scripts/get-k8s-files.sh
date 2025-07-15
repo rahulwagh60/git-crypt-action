@@ -17,6 +17,8 @@ if [ "$ANY_CHANGED" == "true" ]; then
   for file in $ALL_CHANGED_FILES; do
     echo "Checking file: $file"
 
+    file=$(echo "$file" | sed "s/^'//;s/'$//")
+
     # Skip workflow files
     if [[ "$file" == .github/workflows/* ]]; then
       echo "  → Skipping workflow file: $file"
