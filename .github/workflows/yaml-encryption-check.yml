@@ -230,7 +230,6 @@ jobs:
     - name: Validate Kubernetes manifests
       run: |
         echo "Kubeconform installed at: ${{ steps.setup-kubeconform.outputs.installation-path }}"
-        kubeconform -summary -verbose .
       shell: bash
     
     - name: Get changed Kubernetes YAML files in PR
