@@ -453,18 +453,18 @@ jobs:
         kubeconform -v
 
     
-    - name: Get changed YAML files
-      id: changed-k8s-files
-      run: |
-        echo "ANY_CHANGED=false" >> "$GITHUB_ENV"
-        echo "ALL_CHANGED_FILES=" >> "$GITHUB_ENV"
+    # - name: Get changed YAML files
+    #   id: changed-k8s-files
+    #   run: |
+    #     echo "ANY_CHANGED=false" >> "$GITHUB_ENV"
+    #     echo "ALL_CHANGED_FILES=" >> "$GITHUB_ENV"
 
-        CHANGED=$(git diff --name-only origin/main...HEAD | grep -E '\.ya?ml$' || true)
+    #     CHANGED=$(git diff --name-only origin/main...HEAD | grep -E '\.ya?ml$' || true)
 
-        if [ -n "$CHANGED" ]; then
-          echo "ANY_CHANGED=true" >> "$GITHUB_ENV"
-          echo "ALL_CHANGED_FILES=$CHANGED" >> "$GITHUB_ENV"
-        fi
+    #     if [ -n "$CHANGED" ]; then
+    #       echo "ANY_CHANGED=true" >> "$GITHUB_ENV"
+    #       echo "ALL_CHANGED_FILES=$CHANGED" >> "$GITHUB_ENV"
+    #     fi
 
     - name: Set environment variables
       run: |
