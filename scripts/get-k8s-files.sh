@@ -34,14 +34,23 @@ is_kubernetes_file() {
         return 1
     fi
     
+    # Exclude files in .github/workflows/ to avoid GitHub Actions workflows
+    if echo "$file" | grep -E "^\.github/workflows/" >/dev/null; then
+        echo "  → Excluded: $file (in .github/workflows/)"
+        return 1
+    fi
+    
     # Check file path patterns that commonly contain Kubernetes manifests
     if echo "$file" | grep -E "(k8s|kubernetes|manifests|deployment|service|ingress|configmap|secret)" >/dev/null; then
         echo "  → Path-based match: $file"
         return 0
     fi
     
-    # Check file content for Kubernetes-specific fields
-    if grep -q "apiVersion:" "$file" 2>/dev/null || grep -q "kind:" "$file" 2>/dev/null; then
+    # Check file content for ALL Kubernetes-specific fields
+    if grep -q "apiVersion:" "$file" 2>/dev/null && \
+       grep -q "kind:" "$file" 2>/dev/null && \
+       grep -q "metadata:" "$file" 2>/dev/null && \
+       grep -q "spec:" "$file" 2>/dev/null; then
         echo "  → Content-based match: $file"
         return 0
     fi
