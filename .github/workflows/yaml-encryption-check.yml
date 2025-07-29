@@ -355,19 +355,18 @@ jobs:
             comment += `\n\n**⏭️ Skipped changed files (missing schemas):**
           ${skippedFilesList}
           
-          *Note: Files were skipped because their Kubernetes resource schemas are not available in kubeconform's schema database.*`;
+          *Note: Files were skipped because current version validates Kubernetes objects not CRD or argo objects.*`;
           }
           
           comment += `\n\n**🔧 How to fix:**
-          1. Review the kubeconform output in the action logs for specific validation errors
-          2. Check for typos in field names, incorrect indentation, or invalid values
-          3. Ensure your YAML follows the Kubernetes API schema
-          4. Common issues:
+          1. Review the kubernetes yaml file once.
+          2. Check for typos in field names, incorrect indentation, or invalid values.
+          3. Common issues:
              * Incorrect \`apiVersion\` for your Kubernetes cluster
              * Missing required fields
              * Invalid resource specifications
              * Unsupported fields for the specified API version
-          5. Fix the issues and push your changes
+          4. Fix the issues and push your changes
           
           **🔒 Consider blocking merge until validation passes.**`;
           
