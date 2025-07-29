@@ -3,6 +3,7 @@
 # Script to check if YAML files are encrypted according to .gitattributes patterns
 # Uses git-crypt to determine encryption status
 
+echo "running check encryption script"
 set -e
 
 echo "=== Checking YAML file encryption status ==="
@@ -91,23 +92,31 @@ should_be_encrypted() {
 is_file_encrypted() {
     local file="$1"
 
-    # Check if file type is "data" (commonly indicates binary/encrypted content)
+
+    # Check if file type is "data" (typically indicates binary/encrypted content)
     if file "$file" | grep -q "data"; then
         return 0  # Encrypted
+    else
+        return 1  # Not encrypted
     fi
 
-    # Check for specific git-crypt marker bytes
-    if head -c 10 "$file" 2>/dev/null | grep -q $'\x00GITCRYPT'; then
-        return 0  # Encrypted
-    fi
+    # # Check if file type is "data" (commonly indicates binary/encrypted content)
+    # if file "$file" | grep -q "data"; then
+    #     return 0  # Encrypted
+    # fi
 
-    # Check if file looks like plain text YAML
-    if head -n 5 "$file" | grep -E "^[[:space:]]*[a-zA-Z_][a-zA-Z0-9_]*[[:space:]]*:" &>/dev/null; then
-        return 1  # Not encrypted (human-readable YAML)
-    fi
+    # # Check for specific git-crypt marker bytes
+    # if head -c 10 "$file" 2>/dev/null | grep -q $'\x00GITCRYPT'; then
+    #     return 0  # Encrypted
+    # fi
+
+    # # Check if file looks like plain text YAML
+    # if head -n 5 "$file" | grep -E "^[[:space:]]*[a-zA-Z_][a-zA-Z0-9_]*[[:space:]]*:" &>/dev/null; then
+    #     return 1  # Not encrypted (human-readable YAML)
+    # fi
 
     # If unsure, default to encrypted
-    return 0
+    # return 1
 }
 
 
