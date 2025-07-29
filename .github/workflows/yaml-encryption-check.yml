@@ -361,12 +361,7 @@ jobs:
           comment += `\n\n**🔧 How to fix:**
           1. Review the kubernetes yaml file once.
           2. Check for typos in field names, incorrect indentation, or invalid values.
-          3. Common issues:
-             * Incorrect \`apiVersion\` for your Kubernetes cluster
-             * Missing required fields
-             * Invalid resource specifications
-             * Unsupported fields for the specified API version
-          4. Fix the issues and push your changes
+          3. Fix the issues and push your changes
           
           **🔒 Consider blocking merge until validation passes.**`;
           
