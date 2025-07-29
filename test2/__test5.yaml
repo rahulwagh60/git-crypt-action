@@ -3,4 +3,4 @@ kind: Secret
 metadata:
   name: dotfile-secret
 data:
-  .secret-file: dmFsdWUtMg0KDQo=
+  .secret-file: dmFsdWUtMg0KDQo=hgfgh

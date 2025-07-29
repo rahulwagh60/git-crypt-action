@@ -6,7 +6,6 @@ on:
     paths:
       - '**/*.yaml'
       - '**/*.yml'
-  workflow_dispatch:  # Allow manual triggers for testing
 
 permissions:
   contents: read
@@ -35,15 +34,15 @@ jobs:
     - name: Get changed files in PR
       id: changed-files
       run: |
-        chmod +x ./scripts/get-changed-files.sh
-        ./scripts/get-changed-files.sh
+        chmod +x .github/scripts/get-changed-files.sh
+        .github/scripts/get-changed-files.sh
     
     - name: Run YAML encryption check on changed files
       if: env.HAS_CHANGED_FILES == 'true'
       id: encryption-check
       run: |
-        chmod +x ./scripts/check-encryption.sh
-        ./scripts/check-encryption.sh
+        chmod +x .github/scripts/check-encryption.sh
+        .github/scripts/check-encryption.sh
         echo "script_exit_code=$?" >> $GITHUB_OUTPUT
       continue-on-error: true
     
@@ -105,10 +104,10 @@ jobs:
           Please encrypt these files before merging this pull request. Files matching patterns in .gitattributes should be encrypted using git-crypt.
           
           **How to fix:**
-          1. Ensure git-crypt is set up in your repository
-          2. Encrypt the files using git-crypt
-          3. Push the encrypted files to this branch
-          4. The check will run automatically again
+          1. Ensure git-crypt is set up in your repository.
+          2. Encrypt the files using git-crypt and file name should be match "__*.yaml".
+          3. If unencrypted secret push to pull request delete the branch and create it again follow this [https://verve.atlassian.net/wiki/spaces/TECH/pages/15920365615/ArgoCD+Secrets+deployment+app-admin].
+          4. Push the new changes, the check will run automatically again.
           
           **🔒 Merge is currently blocked until all files are encrypted.**`;
           
@@ -125,11 +124,12 @@ jobs:
       with:
         script: |
           // Create a check run that fails, which will block merge
+          const headSha = '${{ steps.pr-info.outputs.head_sha }}'
           const checkRun = await github.rest.checks.create({
             owner: context.repo.owner,
             repo: context.repo.repo,
             name: 'YAML Encryption Validation',
-            head_sha: '${{ steps.pr-info.outputs.head_sha }}',
+            head_sha: headSha,
             status: 'completed',
             conclusion: 'failure',
             output: {
@@ -148,11 +148,12 @@ jobs:
       with:
         script: |
           // Create a successful check run
+          const headSha = '${{ steps.pr-info.outputs.head_sha }}'
           const checkRun = await github.rest.checks.create({
             owner: context.repo.owner,
             repo: context.repo.repo,
             name: 'YAML Encryption Validation',
-            head_sha: '${{ steps.pr-info.outputs.head_sha }}',
+            head_sha: headSha,
             status: 'completed',
             conclusion: 'success',
             output: {
@@ -184,11 +185,12 @@ jobs:
           }
           
           // Create a neutral check run
+          const headSha = '${{ steps.pr-info.outputs.head_sha }}'
           const checkRun = await github.rest.checks.create({
             owner: context.repo.owner,
             repo: context.repo.repo,
             name: 'YAML Encryption Validation',
-            head_sha: '${{ steps.pr-info.outputs.head_sha }}',
+            head_sha: headSha,
             status: 'completed',
             conclusion: 'neutral',
             output: {
@@ -220,221 +222,6 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-
-    - name: Set up Kubeconform
-      id: setup-kubeconform
-      uses: bmuschko/setup-kubeconform@v1
-      with:
-        kubeconform-version: '0.6.6'
-
-    - name: Validate Kubernetes manifests
-      run: |
-        echo "Kubeconform installed at: ${{ steps.setup-kubeconform.outputs.installation-path }}"
-      shell: bash
-    
-    - name: Get changed Kubernetes YAML files in PR
-      id: changed-k8s-files
-      run: |
-        chmod +x ./scripts/get-k8s-files.sh
-        ./scripts/get-k8s-files.sh
-    
-    - name: Validate changed Kubernetes YAML files
-      if: env.K8S_FILES_FOUND == 'true'
-      id: kubeconform-check
-      run: |
-        chmod +x ./scripts/validate-kubernetes-yaml.sh
-        ./scripts/validate-kubernetes-yaml.sh
-      continue-on-error: true
-    
-    - name: Set PR variables for kubeconform
-      id: kubeconform-pr-info
-      run: |
-        if [ "${{ github.event_name }}" = "pull_request" ]; then
-          echo "pr_number=${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
-          echo "head_sha=${{ github.event.pull_request.head.sha }}" >> $GITHUB_OUTPUT
-          echo "is_pr=true" >> $GITHUB_OUTPUT
-        else
-          echo "head_sha=${{ github.sha }}" >> $GITHUB_OUTPUT
-          echo "is_pr=false" >> $GITHUB_OUTPUT
-        fi
-    
-    - name: Create PR comment for valid K8s files
-      if: env.INVALID_K8S_FILES == '0' && env.VALID_K8S_FILES != '0' && steps.kubeconform-pr-info.outputs.is_pr == 'true'
-      uses: actions/github-script@v7
-      with:
-        script: |
-          const comment = `## ⚓ Kubernetes YAML Validation - PASSED ✅
-          
-          All changed Kubernetes YAML files are valid and conform to the Kubernetes API schema!
-          
-          **Summary:**
-          - 📄 Changed K8s files validated: ${process.env.TOTAL_K8S_FILES}
-          - ✅ Valid files: ${process.env.VALID_K8S_FILES}
-          - ❌ Invalid files: 0
-          
-          **Validated changed files:**
-          ${process.env.VALID_FILES_LIST.split('\n').map(f => f.trim()).filter(f => f).map(f => `- \`${f}\``).join('\n')}
-          
-          **Validation performed using kubeconform** - A more modern and faster alternative to kubeval with better schema support.
-          
-          Your Kubernetes manifests are ready for deployment! 🚀`;
-          
-          await github.rest.issues.createComment({
-            issue_number: ${{ steps.kubeconform-pr-info.outputs.pr_number }},
-            owner: context.repo.owner,
-            repo: context.repo.repo,
-            body: comment
-          });
-    
-    - name: Create PR comment for invalid K8s files
-      if: env.INVALID_K8S_FILES != '0' && steps.kubeconform-pr-info.outputs.is_pr == 'true'
-      uses: actions/github-script@v7
-      with:
-        script: |
-          const invalidFiles = process.env.INVALID_FILES_LIST || '';
-          const invalidFilesList = invalidFiles.split('\n').filter(f => f.trim()).map(f => `- \`${f}\``).join('\n');
-          
-          const validFiles = process.env.VALID_FILES_LIST || '';
-          const validFilesList = validFiles.split('\n').filter(f => f.trim()).map(f => `- \`${f}\``).join('\n');
-          
-          const comment = `## ⚠️ Kubernetes YAML Validation - FAILED ❌
-          
-          **Validation Error:** Some changed Kubernetes YAML files failed validation against the Kubernetes API schema!
-          
-          **Summary:**
-          - 📄 Changed K8s files checked: ${process.env.TOTAL_K8S_FILES}
-          - ✅ Valid files: ${process.env.VALID_K8S_FILES}
-          - ❌ **Invalid files: ${process.env.INVALID_K8S_FILES}**
-          
-          **❌ Invalid changed files:**
-          ${invalidFilesList}
-          
-          ${validFilesList ? `**✅ Valid changed files:**\n${validFilesList}\n` : ''}
-          
-          **🔧 How to fix:**
-          1. Review the kubeconform output in the action logs for specific validation errors
-          2. Check for typos in field names, incorrect indentation, or invalid values
-          3. Ensure your YAML follows the Kubernetes API schema
-          4. Common issues:
-             - Incorrect \`apiVersion\` for your Kubernetes cluster
-             - Missing required fields
-             - Invalid resource specifications
-             - Unsupported fields for the specified API version
-          5. Fix the issues and push your changes
-          
-          **📚 Resources:**
-          - [Kubernetes API Reference](https://kubernetes.io/docs/reference/)
-          - [kubeconform Documentation](https://kubeconform.mandragor.org/)
-          - [kubeconform GitHub Repository](https://github.com/yannh/kubeconform)
-          
-          **🔒 Consider blocking merge until validation passes.**`;
-          
-          await github.rest.issues.createComment({
-            issue_number: ${{ steps.kubeconform-pr-info.outputs.pr_number }},
-            owner: context.repo.owner,
-            repo: context.repo.repo,
-            body: comment
-          });
-    
-    - name: Create check for K8s validation results
-      if: env.K8S_FILES_FOUND == 'true'
-      uses: actions/github-script@v7
-      with:
-        script: |
-          const conclusion = process.env.INVALID_K8S_FILES === '0' ? 'success' : 'failure';
-          const title = process.env.INVALID_K8S_FILES === '0' 
-            ? 'All changed Kubernetes YAML files are valid' 
-            : 'Changed Kubernetes YAML validation failed';
-          const summary = process.env.INVALID_K8S_FILES === '0'
-            ? `Successfully validated ${process.env.VALID_K8S_FILES} changed Kubernetes YAML files using kubeconform`
-            : `Found ${process.env.INVALID_K8S_FILES} invalid Kubernetes YAML files out of ${process.env.TOTAL_K8S_FILES} changed files`;
-          
-          await github.rest.checks.create({
-            owner: context.repo.owner,
-            repo: context.repo.repo,
-            name: 'Kubernetes YAML Validation (kubeconform)',
-            head_sha: '${{ steps.kubeconform-pr-info.outputs.head_sha }}',
-            status: 'completed',
-            conclusion: conclusion,
-            output: {
-              title: title,
-              summary: summary,
-              text: process.env.INVALID_K8S_FILES === '0' 
-                ? `Valid changed files:\n${process.env.VALID_FILES_LIST || 'None'}`
-                : `Invalid changed files:\n${process.env.INVALID_FILES_LIST || 'None'}\n\nValid changed files:\n${process.env.VALID_FILES_LIST || 'None'}`
-            }
-          });
-          
-          if (process.env.INVALID_K8S_FILES !== '0') {
-            core.setFailed(`Found ${process.env.INVALID_K8S_FILES} invalid changed Kubernetes YAML files`);
-          }
-    
-    - name: Handle no changed K8s files case
-      if: env.K8S_FILES_FOUND == 'false'
-      uses: actions/github-script@v7
-      with:
-        script: |
-          // Only comment if this is a pull request
-          if ('${{ steps.kubeconform-pr-info.outputs.is_pr }}' === 'true') {
-            const comment = `## ⚓ Kubernetes YAML Validation - NO CHANGED FILES ℹ️
-            
-            No Kubernetes YAML files were changed in this pull request.
-            
-            **Search criteria for changed files:**
-            - Files with paths containing: k8s, kubernetes, manifests, deployment, service, ingress, configmap, secret
-            - Files containing \`apiVersion:\` or \`kind:\` fields
-            
-            **Validation tool:** kubeconform - A modern, fast Kubernetes YAML validator
-            
-            The validation only checks files that are added, modified, or renamed in the PR.`;
-            
-            await github.rest.issues.createComment({
-              issue_number: ${{ steps.kubeconform-pr-info.outputs.pr_number }},
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: comment
-            });
-          }
-          
-          // Create a neutral check run
-          await github.rest.checks.create({
-            owner: context.repo.owner,
-            repo: context.repo.repo,
-            name: 'Kubernetes YAML Validation (kubeconform)',
-            head_sha: '${{ steps.kubeconform-pr-info.outputs.head_sha }}',
-            status: 'completed',
-            conclusion: 'neutral',
-            output: {
-              title: 'No changed Kubernetes YAML files to validate',
-              summary: 'No Kubernetes YAML files changed in this PR.',
-              text: 'This PR does not contain any changes to files that appear to be Kubernetes manifests.'
-            }
-          });
-    
-    - name: Kubeconform Summary
-      run: |
-        echo "=== Kubernetes YAML Validation Summary (kubeconform) ==="
-        if [ "${{ env.K8S_FILES_FOUND }}" = "true" ]; then
-          echo "Total changed K8s files: ${TOTAL_K8S_FILES:-0}"
-          echo "Valid files: ${VALID_K8S_FILES:-0}"
-          echo "Invalid files: ${INVALID_K8S_FILES:-0}"
-          
-
-          if [ "${INVALID_K8S_FILES:-0}" -eq 0 ]; then
-            echo "Validation result: PASSED"
-          else
-            echo "Validation result: FAILED"
-          fi
-        else
-          echo "No Kubernetes YAML files changed."
-        fi
-
-  validate-kubernetes-yaml2:
-    runs-on: ubuntu-latest
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
       with:
         fetch-depth: 0  # Fetch full history
         ref: ${{ github.event.pull_request.head.sha }}  # Checkout the PR head
@@ -444,13 +231,6 @@ jobs:
       run: |
         git fetch origin ${{ github.base_ref }}:${{ github.base_ref }}
         echo "Base branch ${{ github.base_ref }} fetched successfully"
-    
-    # - name: Install kubeconform
-    #   run: |
-    #     curl -sSL -o kubeconform.tar.gz https://github.com/yannh/kubeconform/releases/download/v0.6.4/kubeconform-linux-amd64.tar.gz
-    #     tar -xzf kubeconform.tar.gz
-    #     sudo mv kubeconform /usr/local/bin/
-    #     kubeconform -v
 
     - name: Setup kubeconform
       uses: yokawasa/action-setup-kube-tools@v0.11.2
@@ -459,89 +239,23 @@ jobs:
 
     - name: Verify kubeconform installation
       run: kubeconform -v
-
-    
-    # - name: Get changed YAML files
-    #   id: changed-k8s-files
-    #   run: |
-    #     echo "ANY_CHANGED=false" >> "$GITHUB_ENV"
-    #     echo "ALL_CHANGED_FILES=" >> "$GITHUB_ENV"
-
-    #     CHANGED=$(git diff --name-only origin/main...HEAD | grep -E '\.ya?ml$' || true)
-
-    #     if [ -n "$CHANGED" ]; then
-    #       echo "ANY_CHANGED=true" >> "$GITHUB_ENV"
-    #       echo "ALL_CHANGED_FILES=$CHANGED" >> "$GITHUB_ENV"
-    #     fi
-
-
     - name: Set environment variables
       run: |
         echo "ANY_CHANGED=${{ steps.changed-k8s-files.outputs.any_changed }}" >> $GITHUB_ENV
         echo "ALL_CHANGED_FILES='${{ steps.changed-k8s-files.outputs.all_changed_files }}'" >> $GITHUB_ENV
 
     - name: Make script executable
-      run: chmod +x scripts/get-k8s-files.sh
+      run: chmod +x .github/scripts/get-k8s-files.sh
 
-    - name: Run Kubernetes file detection script
-      run: ./scripts/get-k8s-files.sh
-    
-    # - name: Identify Kubernetes files
-    #   id: k8s-files
-    #   run: |
-    #     K8S_FILES=""
-    #     K8S_FILES_FOUND="false"
-        
-    #     # Check if any YAML files changed
-    #     if [ "${{ steps.changed-k8s-files.outputs.any_changed }}" == "true" ]; then
-    #       echo "Changed YAML files: ${{ steps.changed-k8s-files.outputs.all_changed_files }}"
-          
-    #       # Process each changed file
-    #       for file in ${{ steps.changed-k8s-files.outputs.all_changed_files }}; do
-    #         echo "Checking file: $file"
-            
-    #         # Skip workflow files
-    #         if [[ "$file" == .github/workflows/* ]]; then
-    #           echo "  → Skipping workflow file: $file"
-    #           continue
-    #         fi
-            
-    #         # Check if file exists (not deleted)
-    #         if [ -f "$file" ]; then
-    #           # Check for Kubernetes manifest indicators
-    #           if grep -q "apiVersion:" "$file" 2>/dev/null && grep -q "kind:" "$file" 2>/dev/null; then
-    #             echo "  → Kubernetes manifest detected: $file"
-    #             K8S_FILES="$K8S_FILES$file\n"
-    #             K8S_FILES_FOUND="true"
-    #           elif [[ "$file" == *k8s* ]] || [[ "$file" == *kubernetes* ]] || [[ "$file" == *manifests* ]]; then
-    #             echo "  → Kubernetes manifest detected by path: $file"
-    #             K8S_FILES="$K8S_FILES$file\n"
-    #             K8S_FILES_FOUND="true"
-    #           else
-    #             echo "  → Not a Kubernetes manifest: $file"
-    #           fi
-    #         else
-    #           echo "  → File deleted or not found: $file"
-    #         fi
-    #       done
-          
-    #       # Clean up the files list
-    #       K8S_FILES=$(echo -e "$K8S_FILES" | sed '/^$/d')
-    #     else
-    #       echo "No YAML files changed"
-    #     fi
-        
-    #     echo "K8S_FILES_FOUND=$K8S_FILES_FOUND" >> "$GITHUB_ENV"
-    #     echo "K8S_YAML_FILES<<EOF" >> "$GITHUB_ENV"
-    #     echo -e "$K8S_FILES" >> "$GITHUB_ENV"
-    #     echo "EOF" >> "$GITHUB_ENV"
+    - name: Identify Kubernetes files
+      run: .github/scripts/get-k8s-files.sh
     
     - name: Validate changed Kubernetes YAML files
       if: env.K8S_FILES_FOUND == 'true'
       id: kubeconform-check
       run: |
-        chmod +x ./scripts/validate-kubernetes-yaml.sh
-        ./scripts/validate-kubernetes-yaml.sh
+        chmod +x .github/scripts/validate-kubernetes-yaml.sh
+        .github/scripts/validate-kubernetes-yaml.sh
       continue-on-error: true
     
     - name: Set PR variables for kubeconform
@@ -561,7 +275,14 @@ jobs:
       uses: actions/github-script@v7
       with:
         script: |
-          const comment = `## ⚓ Kubernetes YAML Validation - PASSED ✅
+          const validFiles = process.env.VALID_FILES_LIST || '';
+          const validFilesList = validFiles.split('\n').filter(f => f.trim()).map(f => `- \`${f}\``).join('\n');
+          
+          const skippedFiles = process.env.SKIPPED_FILES_LIST || '';
+          const skippedFilesList = skippedFiles.split('\n').filter(f => f.trim()).map(f => `- \`${f}\``).join('\n');
+          const skippedCount = process.env.SKIPPED_K8S_FILES || '0';
+          
+          let comment = `## ⚙️ Kubernetes YAML Validation - PASSED ✅
           
           All changed Kubernetes YAML files are valid and conform to the Kubernetes API schema!
           
@@ -569,11 +290,19 @@ jobs:
           - 📄 Changed K8s files validated: ${process.env.TOTAL_K8S_FILES}
           - ✅ Valid files: ${process.env.VALID_K8S_FILES}
           - ❌ Invalid files: 0
+          - ⏭️ Skipped files (missing schemas): ${skippedCount}
           
-          **Validated changed files:**
-          ${process.env.VALID_FILES_LIST.split('\n').map(f => f.trim()).filter(f => f).map(f => `- \`${f}\``).join('\n')}
+          **✅ Valid changed files:**
+          ${validFilesList}`;
           
-          **Validation performed using kubeconform** - A more modern and faster alternative to kubeval with better schema support.
+          if (skippedCount !== '0' && skippedFilesList) {
+            comment += `\n\n**⏭️ Skipped changed files (missing schemas):**
+          ${skippedFilesList}
+          
+          *Note: Files were skipped because their Kubernetes resource schemas are not available in kubeconform's schema database. This is normal for CRDs or newer API versions.*`;
+          }
+          
+          comment += `\n\n**Validation performed using kubeconform** with strict mode and missing schema handling.
           
           Your Kubernetes manifests are ready for deployment! 🚀`;
           
@@ -595,7 +324,16 @@ jobs:
           const validFiles = process.env.VALID_FILES_LIST || '';
           const validFilesList = validFiles.split('\n').filter(f => f.trim()).map(f => `- \`${f}\``).join('\n');
           
-          const comment = `## ⚠️ Kubernetes YAML Validation - FAILED ❌
+          const skippedFiles = process.env.SKIPPED_FILES_LIST || '';
+          const skippedFilesList = skippedFiles ? skippedFiles.split('\n').filter(f => f.trim()).map(f => `- \`${f}\``).join('\n') : '';
+          const skippedCount = process.env.SKIPPED_K8S_FILES || '0';
+          
+          console.log('Debug - SKIPPED_K8S_FILES:', process.env.SKIPPED_K8S_FILES);
+          console.log('Debug - SKIPPED_FILES_LIST raw:', JSON.stringify(process.env.SKIPPED_FILES_LIST));
+          console.log('Debug - skippedFilesList processed:', skippedFilesList);
+          console.log('Debug - skippedCount:', skippedCount);
+          
+          let comment = `## ⚠️ Kubernetes YAML Validation - FAILED ❌
           
           **Validation Error:** Some changed Kubernetes YAML files failed validation against the Kubernetes API schema!
           
@@ -603,27 +341,27 @@ jobs:
           - 📄 Changed K8s files checked: ${process.env.TOTAL_K8S_FILES}
           - ✅ Valid files: ${process.env.VALID_K8S_FILES}
           - ❌ **Invalid files: ${process.env.INVALID_K8S_FILES}**
+          - ⏭️ Skipped files (missing schemas): ${skippedCount}
           
           **❌ Invalid changed files:**
-          ${invalidFilesList}
+          ${invalidFilesList}`;
           
-          ${validFilesList ? `**✅ Valid changed files:**\n${validFilesList}\n` : ''}
+          if (validFilesList) {
+            comment += `\n\n**✅ Valid changed files:**
+          ${validFilesList}`;
+          }
           
-          **🔧 How to fix:**
-          1. Review the kubeconform output in the action logs for specific validation errors
-          2. Check for typos in field names, incorrect indentation, or invalid values
-          3. Ensure your YAML follows the Kubernetes API schema
-          4. Common issues:
-             - Incorrect \`apiVersion\` for your Kubernetes cluster
-             - Missing required fields
-             - Invalid resource specifications
-             - Unsupported fields for the specified API version
-          5. Fix the issues and push your changes
+          if (parseInt(skippedCount) > 0 && skippedFilesList.length > 0) {
+            comment += `\n\n**⏭️ Skipped changed files (missing schemas):**
+          ${skippedFilesList}
           
-          **📚 Resources:**
-          - [Kubernetes API Reference](https://kubernetes.io/docs/reference/)
-          - [kubeconform Documentation](https://kubeconform.mandragor.org/)
-          - [kubeconform GitHub Repository](https://github.com/yannh/kubeconform)
+          *Note: Files were skipped because current version validates Kubernetes objects not CRD or argo objects.*`;
+          }
+          
+          comment += `\n\n**🔧 How to fix:**
+          1. Review the kubernetes yaml file once.
+          2. Check for typos in field names, incorrect indentation, or invalid values.
+          3. Fix the issues and push your changes
           
           **🔒 Consider blocking merge until validation passes.**`;
           
@@ -643,9 +381,26 @@ jobs:
           const title = process.env.INVALID_K8S_FILES === '0' 
             ? 'All changed Kubernetes YAML files are valid' 
             : 'Changed Kubernetes YAML validation failed';
+          
+          const validCount = process.env.VALID_K8S_FILES || '0';
+          const invalidCount = process.env.INVALID_K8S_FILES || '0';
+          const skippedCount = process.env.SKIPPED_K8S_FILES || '0';
+          const totalCount = process.env.TOTAL_K8S_FILES || '0';
+          
           const summary = process.env.INVALID_K8S_FILES === '0'
-            ? `Successfully validated ${process.env.VALID_K8S_FILES} changed Kubernetes YAML files using kubeconform`
-            : `Found ${process.env.INVALID_K8S_FILES} invalid Kubernetes YAML files out of ${process.env.TOTAL_K8S_FILES} changed files`;
+            ? `Successfully validated ${validCount} changed Kubernetes YAML files using kubeconform (${skippedCount} files skipped due to missing schemas)`
+            : `Found ${invalidCount} invalid Kubernetes YAML files out of ${totalCount} changed files (${skippedCount} files skipped due to missing schemas)`;
+          
+          let text = '';
+          if (process.env.VALID_FILES_LIST) {
+            text += `Valid changed files:\n${process.env.VALID_FILES_LIST}\n\n`;
+          }
+          if (process.env.INVALID_FILES_LIST) {
+            text += `Invalid changed files:\n${process.env.INVALID_FILES_LIST}\n\n`;
+          }
+          if (process.env.SKIPPED_FILES_LIST) {
+            text += `Skipped changed files (missing schemas):\n${process.env.SKIPPED_FILES_LIST}`;
+          }
           
           await github.rest.checks.create({
             owner: context.repo.owner,
@@ -657,9 +412,7 @@ jobs:
             output: {
               title: title,
               summary: summary,
-              text: process.env.INVALID_K8S_FILES === '0' 
-                ? `Valid changed files:\n${process.env.VALID_FILES_LIST || 'None'}`
-                : `Invalid changed files:\n${process.env.INVALID_FILES_LIST || 'None'}\n\nValid changed files:\n${process.env.VALID_FILES_LIST || 'None'}`
+              text: text || 'No details available'
             }
           });
           
@@ -674,15 +427,13 @@ jobs:
         script: |
           // Only comment if this is a pull request
           if ('${{ steps.kubeconform-pr-info.outputs.is_pr }}' === 'true') {
-            const comment = `## ⚓ Kubernetes YAML Validation - NO CHANGED FILES ℹ️
+            const comment = `## ⚙️ Kubernetes YAML Validation - NO CHANGED FILES ℹ️
             
             No Kubernetes YAML files were changed in this pull request.
             
             **Search criteria for changed files:**
             - Files with paths containing: k8s, kubernetes, manifests, deployment, service, ingress, configmap, secret
             - Files containing \`apiVersion:\` or \`kind:\` fields
-            
-            **Validation tool:** kubeconform - A modern, fast Kubernetes YAML validator
             
             The validation only checks files that are added, modified, or renamed in the PR.`;
             
@@ -712,16 +463,4 @@ jobs:
     - name: Kubeconform Summary
       run: |
         echo "=== Kubernetes YAML Validation Summary (kubeconform) ==="
-        if [ "${{ env.K8S_FILES_FOUND }}" = "true" ]; then
-          echo "Total changed K8s files: ${TOTAL_K8S_FILES:-0}"
-          echo "Valid files: ${VALID_K8S_FILES:-0}"
-          echo "Invalid files: ${INVALID_K8S_FILES:-0}"
-          
-          if [ "${INVALID_K8S_FILES:-0}" -eq 0 ]; then
-            echo "Validation result: PASSED"
-          else
-            echo "Validation result: FAILED"
-          fi
-        else
-          echo "No Kubernetes YAML files changed."
-        fi
+        if [ "${{ env.K8S_FILES_FOUND }}" = "true"
