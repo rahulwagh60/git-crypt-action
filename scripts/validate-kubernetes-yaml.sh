@@ -40,9 +40,21 @@ validate_k8s_file() {
     # -output: use text output format
     # -strict: disallow additional properties not in schema
     # -ignore-missing-schemas: skip validation for resources with missing schemas
-    if kubeconform -summary -verbose -output text -strict -ignore-missing-schemas "$file" > "$temp_output" 2>&1; then
-        # Check if file was skipped due to missing schema
-        if grep -q "skipped" "$temp_output" || grep -q "ignored" "$temp_output"; then
+    kubeconform_exit_code=0
+    kubeconform -summary -verbose -output text -strict -ignore-missing-schemas "$file" > "$temp_output" 2>&1 || kubeconform_exit_code=$?
+    
+    # Debug: Show what kubeconform actually outputs
+    echo "  Debug - kubeconform exit code: $kubeconform_exit_code"
+    echo "  Debug - kubeconform output:"
+    sed 's/^/    DEBUG: /' "$temp_output"
+    
+    # Check the output content for different scenarios
+    if [ $kubeconform_exit_code -eq 0 ]; then
+        # Exit code 0 means success, but could be valid or skipped
+        # Look for patterns that indicate skipped files
+        if grep -q -i -E "(schema not found|skipped|ignored|no schema)" "$temp_output" || \
+           grep -q -E "could not find schema" "$temp_output" || \
+           grep -q -E "missing schema" "$temp_output"; then
             echo "  ⏭️ Skipped (missing schema)"
             SKIPPED_K8S_FILES=$((SKIPPED_K8S_FILES + 1))
             SKIPPED_FILES_LIST="$SKIPPED_FILES_LIST$file\n"
@@ -91,9 +103,13 @@ validate_multi_doc_file() {
     # -output: use text output format
     # -strict: disallow additional properties not in schema
     # -ignore-missing-schemas: skip validation for resources with missing schemas
-    if kubeconform -summary -verbose -output text -strict -ignore-missing-schemas "$file" > "$temp_output" 2>&1; then
-        # Check if file was skipped due to missing schema
-        if grep -q "skipped" "$temp_output" || grep -q "ignored" "$temp_output"; then
+    kubeconform_exit_code=0
+    kubeconform -summary -verbose -output text -strict -ignore-missing-schemas "$file" > "$temp_output" 2>&1 || kubeconform_exit_code=$?
+    
+    # Check the output content for different scenarios
+    if [ $kubeconform_exit_code -eq 0 ]; then
+        # Exit code 0 means success, but could be valid or skipped
+        if grep -q -E "(skipped|ignored|missing schema)" "$temp_output"; then
             echo "  ⏭️ Some/all documents in $file were skipped (missing schema)"
             SKIPPED_K8S_FILES=$((SKIPPED_K8S_FILES + 1))
             SKIPPED_FILES_LIST="$SKIPPED_FILES_LIST$file\n"
