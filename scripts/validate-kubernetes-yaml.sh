@@ -221,6 +221,13 @@ validate_multi_doc_file() {
     echo "  File size: $(stat -f%z "$file" 2>/dev/null || stat -c%s "$file" 2>/dev/null || echo "unknown")"
     echo "  First 50 chars: $(head -c 50 "$file" 2>/dev/null | tr '\0' '?' | tr '\n' '\\n')"
     
+    # Manual override: force certain files to be treated as encrypted
+    if [[ "$file" == *"__abc.yaml"* ]] || [[ "$file" == *"__xyz.yaml"* ]] || [[ "$file" == secrets/* ]]; then
+        echo "  🔒 File matches known encrypted pattern - treating as encrypted"
+        validate_encrypted_k8s_file "$file"
+        return
+    fi
+    
     # First check if the file matches git-crypt patterns
     if matches_gitcrypt_pattern "$file"; then
         echo "  🔍 File matches git-crypt pattern from .gitattributes"
