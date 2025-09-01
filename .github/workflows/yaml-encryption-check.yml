@@ -256,8 +256,8 @@ jobs:
       run: |
         if [ -n "$GIT_CRYPT_KEY" ]; then
           echo "$GIT_CRYPT_KEY" | base64 -d > git-crypt-key
-          echo "$GIT_CRYPT_KEY"
-          ls -l "$GIT_CRYPT_KEY"
+          echo git-crypt-key
+          ls -l git-crypt-key
           chmod +X git-crypt-key
           git-crypt unlock git-crypt-key --force
           rm git-crypt-key
