@@ -259,6 +259,17 @@ jobs:
           git-crypt unlock git-crypt-key
           rm git-crypt-key
           echo "🔓 Repository unlocked"
+
+           # Verify unlock worked
+          echo "🔍 Checking git-crypt status after unlock:"
+          git-crypt status | head -10
+
+           # Test decryption of your specific files
+           echo "📝 Testing file content after unlock:"
+          if [ -f "secrets/__abc.yaml" ]; then
+            echo "secrets/__abc.yaml first line:"
+            head -n 1 "secrets/__abc.yaml" | hexdump -C
+          fi
         else
           echo "⚠️ No git-crypt key provided - encrypted files will be skipped"
         fi
