@@ -259,7 +259,7 @@ jobs:
           echo git-crypt-key
           ls -l git-crypt-key
           chmod +X git-crypt-key
-          git-crypt unlock git-crypt-key --force
+          git-crypt unlock git-crypt-key
           rm git-crypt-key
           echo "🔓 Repository unlocked"
 
