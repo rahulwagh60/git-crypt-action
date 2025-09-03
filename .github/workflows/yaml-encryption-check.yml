@@ -269,19 +269,22 @@ jobs:
     #     else
     #       echo "⚠️ No git-crypt key provided - encrypted files will be skipped"
     #     fi
-        
-# Replace the git-crypt setup step with this enhanced version for debugging:
-
+            
     - name: Setup and verify git-crypt key
-      if: ${{ secrets.GIT_CRYPT_KEY }}
       run: |
         echo "=== Setting up git-crypt key ==="
+        
+        # Check if GIT_CRYPT_KEY secret is set
+        if [ -z "${{ secrets.GIT_CRYPT_KEY }}" ]; then
+          echo "⚠️ GIT_CRYPT_KEY secret is not set, skipping git-crypt unlock"
+          exit 0
+        fi
         
         # Decode the key from base64 and save it
         echo "${{ secrets.GIT_CRYPT_KEY }}" | base64 -d > .git-crypt-key
         
         # Verify key properties
-        echo "Key file created with size: $(wc -c < .git-crypt-key) bytes"
+        echo key_size=$(wc -c < .git-crypt-key)
         echo "Expected size: 32 bytes"
         
         # Check if size is correct (git-crypt keys are 32 bytes)
@@ -339,7 +342,6 @@ jobs:
         
         echo "✅ Repository unlocked successfully"
 
-    # Alternative approach: Don't unlock, just validate encrypted files as-is
     - name: Setup git-crypt (detection only)
       run: |
         echo "=== Git-crypt detection mode ==="
