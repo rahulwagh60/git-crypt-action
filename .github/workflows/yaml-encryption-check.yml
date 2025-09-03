@@ -233,23 +233,42 @@ jobs:
         echo "Base branch ${{ github.base_ref }} fetched successfully"
 
     # Add this step after "Fetch base branch" and before "Setup kubeconform"
+    # - name: Install git-crypt
+    #   run: |
+    #     sudo apt-get update
+    #     sudo apt-get install -y git-crypt
+    #     git-crypt --version
+    #     echo "git-crypt installed successfully"
+
+    # # Optional: Add this step if you have a git-crypt key stored as a GitHub secret
+    # # Place this after the "Install git-crypt" step
+    # - name: Setup git-crypt key
+    #   if: ${{ secrets.GIT_CRYPT_KEY }}
+    #   run: |
+    #     echo "${{ secrets.GIT_CRYPT_KEY }}" | base64 -d > .git-crypt-key
+    #     git-crypt unlock .git-crypt-key
+    #     rm .git-crypt-key
+    #     cat .git-crypt-key
+    #     echo "Repository unlocked with git-crypt"
     - name: Install git-crypt
       run: |
         sudo apt-get update
         sudo apt-get install -y git-crypt
         git-crypt --version
-        echo "git-crypt installed successfully"
-
-    # Optional: Add this step if you have a git-crypt key stored as a GitHub secret
-    # Place this after the "Install git-crypt" step
-    - name: Setup git-crypt key
-      if: ${{ secrets.GIT_CRYPT_KEY }}
+        
+    - name: Unlock git-crypt (if key is available)
+      env:
+        GIT_CRYPT_KEY: ${{ secrets.GIT_CRYPT_KEY }}
       run: |
-        echo "${{ secrets.GIT_CRYPT_KEY }}" | base64 -d > .git-crypt-key
-        git-crypt unlock .git-crypt-key
-        rm .git-crypt-key
-        cat .git-crypt-key
-        echo "Repository unlocked with git-crypt"
+        if [ -n "$GIT_CRYPT_KEY" ]; then
+          echo "$GIT_CRYPT_KEY" | base64 -d > git-crypt-key
+          git-crypt unlock git-crypt-key
+          rm git-crypt-key
+          echo "🔓 Repository unlocked"
+        else
+          echo "⚠️ No git-crypt key provided - encrypted files will be skipped"
+        fi
+        
 
 
     - name: Setup kubeconform
