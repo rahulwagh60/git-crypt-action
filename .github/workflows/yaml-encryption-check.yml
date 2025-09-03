@@ -232,6 +232,26 @@ jobs:
         git fetch origin ${{ github.base_ref }}:${{ github.base_ref }}
         echo "Base branch ${{ github.base_ref }} fetched successfully"
 
+    # Add this step after "Fetch base branch" and before "Setup kubeconform"
+    - name: Install git-crypt
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y git-crypt
+        git-crypt --version
+        echo "git-crypt installed successfully"
+
+    # Optional: Add this step if you have a git-crypt key stored as a GitHub secret
+    # Place this after the "Install git-crypt" step
+    - name: Setup git-crypt key
+      if: ${{ secrets.GIT_CRYPT_KEY }}
+      run: |
+        echo "${{ secrets.GIT_CRYPT_KEY }}" | base64 -d > .git-crypt-key
+        git-crypt unlock .git-crypt-key
+        rm .git-crypt-key
+        cat .git-crypt-key
+        echo "Repository unlocked with git-crypt"
+
+
     - name: Setup kubeconform
       uses: yokawasa/action-setup-kube-tools@v0.11.2
       with:
@@ -243,39 +263,6 @@ jobs:
       run: |
         echo "ANY_CHANGED=${{ steps.changed-k8s-files.outputs.any_changed }}" >> $GITHUB_ENV
         echo "ALL_CHANGED_FILES='${{ steps.changed-k8s-files.outputs.all_changed_files }}'" >> $GITHUB_ENV
-
-    - name: Install git-crypt
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y git-crypt
-        git-crypt --version
-
-    - name: Unlock git-crypt (if key is available)
-      env:
-        GIT_CRYPT_KEY: ${{ secrets.GIT_CRYPT_KEY }}
-      run: |
-        if [ -n "$GIT_CRYPT_KEY" ]; then
-          echo "$GIT_CRYPT_KEY" | base64 -d > git-crypt-key
-          echo git-crypt-key
-          ls -l git-crypt-key
-          chmod +X git-crypt-key
-          git-crypt unlock git-crypt-key
-          rm git-crypt-key
-          echo "🔓 Repository unlocked"
-
-           # Verify unlock worked
-          echo "🔍 Checking git-crypt status after unlock:"
-          git-crypt status | head -10
-
-           # Test decryption of your specific files
-           echo "📝 Testing file content after unlock:"
-          if [ -f "secrets/__abc.yaml" ]; then
-            echo "secrets/__abc.yaml first line:"
-            head -n 1 "secrets/__abc.yaml" | hexdump -C
-          fi
-        else
-          echo "⚠️ No git-crypt key provided - encrypted files will be skipped"
-        fi
 
     - name: Make script executable
       run: chmod +x .github/scripts/get-k8s-files.sh
