@@ -250,25 +250,110 @@ jobs:
     #     rm .git-crypt-key
     #     cat .git-crypt-key
     #     echo "Repository unlocked with git-crypt"
-    - name: Install git-crypt
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y git-crypt
-        git-crypt --version
+
+    # - name: Install git-crypt
+    #   run: |
+    #     sudo apt-get update
+    #     sudo apt-get install -y git-crypt
+    #     git-crypt --version
         
-    - name: Unlock git-crypt (if key is available)
-      env:
-        GIT_CRYPT_KEY: ${{ secrets.GIT_CRYPT_KEY }}
+    # - name: Unlock git-crypt (if key is available)
+    #   env:
+    #     GIT_CRYPT_KEY: ${{ secrets.GIT_CRYPT_KEY }}
+    #   run: |
+    #     if [ -n "$GIT_CRYPT_KEY" ]; then
+    #       echo "$GIT_CRYPT_KEY" | base64 -d > git-crypt-key
+    #       git-crypt unlock git-crypt-key
+    #       rm git-crypt-key
+    #       echo "🔓 Repository unlocked"
+    #     else
+    #       echo "⚠️ No git-crypt key provided - encrypted files will be skipped"
+    #     fi
+        
+# Replace the git-crypt setup step with this enhanced version for debugging:
+
+    - name: Setup and verify git-crypt key
+      if: ${{ secrets.GIT_CRYPT_KEY }}
       run: |
-        if [ -n "$GIT_CRYPT_KEY" ]; then
-          echo "$GIT_CRYPT_KEY" | base64 -d > git-crypt-key
-          git-crypt unlock git-crypt-key
-          rm git-crypt-key
-          echo "🔓 Repository unlocked"
-        else
-          echo "⚠️ No git-crypt key provided - encrypted files will be skipped"
+        echo "=== Setting up git-crypt key ==="
+        
+        # Decode the key from base64 and save it
+        echo "${{ secrets.GIT_CRYPT_KEY }}" | base64 -d > .git-crypt-key
+        
+        # Verify key properties
+        echo "Key file created with size: $(wc -c < .git-crypt-key) bytes"
+        echo "Expected size: 32 bytes"
+        
+        # Check if size is correct (git-crypt keys are 32 bytes)
+        key_size=$(wc -c < .git-crypt-key)
+        if [ "$key_size" -ne 32 ]; then
+            echo "❌ ERROR: Key size is incorrect. Got $key_size bytes, expected 32 bytes"
+            echo "This suggests the key in GitHub secrets is corrupted or incorrectly encoded"
+            exit 1
         fi
         
+        # Set proper permissions
+        chmod 600 .git-crypt-key
+        
+        # Show git-crypt status before unlock
+        echo "=== Git-crypt status before unlock ==="
+        git-crypt status || true
+        
+        # Try to unlock with detailed error handling
+        echo "=== Attempting to unlock repository ==="
+        if ! git-crypt unlock .git-crypt-key; then
+            echo "❌ ERROR: Failed to unlock repository with git-crypt"
+            echo "This could mean:"
+            echo "1. The key doesn't match this repository"
+            echo "2. The key is corrupted"
+            echo "3. Encrypted files have been tampered with"
+            
+            # Show more details about the error
+            echo "=== Checking .gitattributes configuration ==="
+            if [ -f ".gitattributes" ]; then
+                cat .gitattributes
+            else
+                echo "No .gitattributes file found"
+            fi
+            
+            # List encrypted files
+            echo "=== Files that should be encrypted ==="
+            git ls-files | while read file; do
+                if git check-attr filter "$file" | grep -q "git-crypt"; then
+                    echo "Encrypted file: $file"
+                    if [ -f "$file" ]; then
+                        echo "  File exists, first 20 bytes: $(hexdump -C "$file" | head -1)"
+                    fi
+                fi
+            done
+            
+            exit 1
+        fi
+        
+        # Clean up key file
+        rm -f .git-crypt-key
+        
+        # Verify unlock was successful
+        echo "=== Git-crypt status after unlock ==="
+        git-crypt status
+        
+        echo "✅ Repository unlocked successfully"
+
+    # Alternative approach: Don't unlock, just validate encrypted files as-is
+    - name: Setup git-crypt (detection only)
+      run: |
+        echo "=== Git-crypt detection mode ==="
+        echo "Not unlocking repository, will detect and handle encrypted files during validation"
+        
+        # Check if we have encrypted files
+        echo "=== Checking for encrypted files ==="
+        if [ -f ".gitattributes" ]; then
+            echo "Git-crypt patterns in .gitattributes:"
+            grep "filter=git-crypt" .gitattributes || echo "No git-crypt patterns found"
+        fi
+        
+        # The validation script will handle encrypted files by using 'git show HEAD:file'
+        # which shows the decrypted content without needing to unlock the working directory
 
 
     - name: Setup kubeconform
