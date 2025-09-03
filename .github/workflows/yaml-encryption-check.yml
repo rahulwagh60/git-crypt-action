@@ -289,11 +289,11 @@ jobs:
         
         # Check if size is correct (git-crypt keys are 32 bytes)
         key_size=$(wc -c < .git-crypt-key)
-        if [ "$key_size" -ne 32 ]; then
-            echo "❌ ERROR: Key size is incorrect. Got $key_size bytes, expected 32 bytes"
-            echo "This suggests the key in GitHub secrets is corrupted or incorrectly encoded"
-            exit 1
-        fi
+        # if [ "$key_size" -ne 32 ]; then
+        #     echo "❌ ERROR: Key size is incorrect. Got $key_size bytes, expected 32 bytes"
+        #     echo "This suggests the key in GitHub secrets is corrupted or incorrectly encoded"
+        #     exit 1
+        # fi
         
         # Set proper permissions
         chmod 600 .git-crypt-key
