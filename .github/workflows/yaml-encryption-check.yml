@@ -243,7 +243,7 @@ jobs:
     # Optional: Add this step if you have a git-crypt key stored as a GitHub secret
     # Place this after the "Install git-crypt" step
     - name: Setup git-crypt key
-      if: yes #${{ secrets.GIT_CRYPT_KEY }}
+      if: ${{ secrets.GIT_CRYPT_KEY }}
       run: |
         echo "${{ secrets.GIT_CRYPT_KEY }}" | base64 -d > .git-crypt-key
         git-crypt unlock .git-crypt-key
